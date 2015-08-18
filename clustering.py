@@ -1,11 +1,9 @@
 import scipy.cluster.hierarchy as sch
-import itertools
-
-import scipy.spatial.distance as distance
-import scipy.cluster.hierarchy as sch
-
+#import scipy.spatial.distance as distance
 from gapstat import computeGapStat
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
+import numpy as np
+import pandas as pd
 
 __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
