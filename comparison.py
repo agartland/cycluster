@@ -23,37 +23,48 @@ def compareClusters(labelsA, labelsB, method = 'ARI', alignFirst = True):
         s = metrics.adjusted_mutual_info_score(labelsA.values, alignedB.values)
     return s
 
-def plotClusterOverlap(sA, sB, s):
-    yA = np.linspace(10,0,len(sA))
-    yB = np.linspace(10,0,len(sB))
+def plotClusterOverlap(labelsA, labelsB):
+    def _thickness(labelsA, labelsB, a, b):
+        indA = labelsA == a
+        indB = labelsB == b
+        return 2 * (indA & indB).sum()/(indA.sum() + indB.sum())
+    
+    alignedB = alignClusters(labelsA, labelsB)
+    
+    yA = np.linspace(10,0,np.unique(labelsA).shape[0])
+    yB = np.linspace(10,0,np.unique(labelsB).shape[0])
     
     axh = plt.gca()
     axh.cla()
     annParams = dict(ha = 'center', va = 'center', size = 'x-large', zorder = 15)
-    for ai, a in enumerate(sA):
+    for ai, a in enumerate(np.unique(labelsA)):
         axh.annotate(s = '%s' % a, xy = (0,yA[ai]), color = 'black', **annParams)
-        for bi, b in enumerate(sB):
+        for bi, b in enumerate(np.unique(alignedB)):
             if ai == 0:
-                annotate(s = '%s' % b, xy = (1,yB[bi]), color='white', **annParams)
-            axh.plot([0,1], [yA[ai], yB[bi]], '-', lw = 20 * s[ai,bi], color='black', alpha = 0.7, zorder = 1)
-    axh.scatter(np.zeros(len(sA)), yA, s = 1000, color = 'red', zorder = 10)
-    axh.scatter(np.ones(len(sB)), yB, s = 1000, color = 'blue', zorder = 10)
+                axh.annotate(s = '%s' % b, xy = (1,yB[bi]), color = 'white', **annParams)
+            axh.plot([0,1], [yA[ai], yB[bi]], '-', lw = 20 * _thickness(labelsA, alignedB, a, b), color = 'black', alpha = 0.7, zorder = 5)
+    axh.scatter(np.zeros(np.unique(labelsA).shape[0]), yA, s = 1000, color = 'red', zorder = 10)
+    axh.scatter(np.ones(np.unique(labelsB).shape[0]), yB, s = 1000, color = 'blue', zorder = 10)
     plt.axis('off')
+    plt.draw()
 
 def _alignClusterMats(matA, matB):
     """Returns a copy of matB with columns shuffled to maximize overlap with matA
     matX is a representation of cluster labels using a sparse\binary np.ndarray
     with labels along the columns"""
+    out = matB.copy()
+
     nCols = matA.shape[1]
-    swap = {}
+    
+    swaps = {}
     for colA in range(nCols):
         match = np.argmax([(matA[:,colA] * matB[:,colB]).sum() for colB in range(nCols)])
-        swap.update({match:colA})
+        swaps.update({match:colA})
+    if len(swaps) == nCols:
+        """Easy 1:1 matching"""
+        for colB,colA in swaps.items():
+            out[:,colA] = matB[:,colB]
 
-    out = matB.copy()
-    for colB,colA in swap.items():
-        out[:,colA] = matB[:,colB]
-    
     """In case the clusters aren't clearly 1:1 then try extra swaps until the optimum is found"""
     niters = 0
     while True:
@@ -82,7 +93,7 @@ def _alignSparseDf(dfA, dfB):
 
 def _labels2sparseDf(labels):
     labelCols = np.unique(labels)
-    clusterMat = np.zeros((labels.shape[0], labelCols.shape[0]))
+    clusterMat = np.zeros((labels.shape[0], labelCols.shape[0]), dtype = np.int32)
     for labi,lab in enumerate(labelCols):
         ind = (labels==lab).values
         clusterMat[ind,labi] = 1
@@ -91,8 +102,8 @@ def _labels2sparseDf(labels):
 def _sparseDf2labels(sparseDf):
     labels = pd.Series(np.zeros(sparseDf.shape[0]), index = sparseDf.index)
     for clusterCol in sparseDf.columns:
-        labels[sparseDf[clusterCol]] = clusterCol
-    return labels
+        labels[sparseDf[clusterCol].astype(bool)] = clusterCol
+    return labels.astype(np.int32)
 
 def alignClusters(labelsA, labelsB):
     """Returns a copy of labelsB with renamed labels shuffled to maximize overlap with matA"""

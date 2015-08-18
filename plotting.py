@@ -1,15 +1,59 @@
-import networkx as nx
-import seaborn as sns
-
-from corrplots import validPairwiseCounts, partialcorr
-from myboxplot import myboxplot, manyboxplots
-import statsmodels.api as sm
-from sklearn.decomposition import KernelPCA, PCA
-
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import palettable
+import tsne
+from sklearn.decomposition import KernelPCA, PCA
+from sklearn.manifold import TSNE
+import tsne
 
-def cyBoxPlots(plotDf, sortDf, cyDict, cySets, vRange, fn):
+#import networkx as nx
+#import seaborn as sns
+#from corrplots import validPairwiseCounts, partialcorr
+#from myboxplot import myboxplot, manyboxplots
+#import statsmodels.api as sm
+
+__all__ = ['plotModuleEmbedding']
+
+def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLabels = True):
+    """Embed cytokine correlation matrix to visualize cytokine clusters"""
+    uLabels = np.unique(labels).tolist()
+
+    dmat = dmatDf.values
+    
+    if method == 'kpca':
+        """By using KernelPCA for dimensionality reduction we don't need to impute missing values"""
+        pca = KernelPCA(kernel='precomputed')
+        gram = 1 - (dmat / dmat.max())
+        xy = pca.fit_transform(gram)
+    elif method == 'tsne':
+        xy = tsne.run_tsne(dmat)
+    elif method == 'sklearn-tsne':
+        tsneObj = TSNE(n_components=2, metric='precomputed', random_state = 0)
+        xy = tsneObj.fit_transform(dmat)
+
+    colors = palettable.colorbrewer.get_map('Set1', 'qualitative', len(uLabels)).mpl_colors
+    figh = plt.gcf()
+    figh.clf()
+    axh = figh.add_axes([0.03,0.03,0.94,0.94])
+    axh.axis('off')
+    figh.set_facecolor('white')
+    annotationParams = dict(xytext=(0,5), textcoords='offset points', size='x-small')
+    for cyi,cy in enumerate(dmatDf.columns):
+        if not dropped is None and dropped[cy]:
+            cyLab = '*' + cy
+            alpha = 0.3
+        else:
+            cyLab = cy
+            alpha = 0.8
+
+        if plotLabels:
+            axh.annotate(cyLab, xy = (xy[cyi,0], xy[cyi,1]), **annotationParams)
+        col = colors[uLabels.index(labels[cyi])]
+        axh.scatter(xy[cyi,0], xy[cyi,1], marker = 'o', s = 100, alpha = alpha, c = col)
+    plt.draw()
+
+def _cyBoxPlots(plotDf, sortDf, cyDict, cySets, vRange, fn):
     """Boxplots of all cytokines, organized by source and sorted by median"""
     def sortFunc(df,c):
         tmp = df[c].dropna()
@@ -33,7 +77,7 @@ def cyBoxPlots(plotDf, sortDf, cyDict, cySets, vRange, fn):
             title(cySet + ' Analytes (page %d)' % (i+1))
             figure(1).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_%02d.png' % (fn,cySet,i))
 
-def cyNHeatmap(df, cyDict, cySets, studyStr):
+def _cyNHeatmap(df, cyDict, cySets, studyStr):
     """Heatmap showing number of data points for each potential pairwise comparison of cytokines"""
     figure(2,figsize=(15,11.8))
     for cySet in cySets:
@@ -47,7 +91,8 @@ def cyNHeatmap(df, cyDict, cySets, studyStr):
     heatmap(pwCounts, cmap = cm.gray, edgecolors='w', labelSize='small')
     tight_layout()
     figure(3).savefig(DATA_PATH + 'RandolphFlu/figures/%s_num_cy_All.png' % studyStr)
-def compCommCorr(df, cyDict, tiss, compCommVec, studyStr):
+
+def _compCommCorr(df, cyDict, tiss, compCommVec, studyStr):
     """Plot of each cytokine's correlation with the mean."""
     tmpCorr = zeros((len(cyDict[tiss]),2))
     for i,s in enumerate(cyDict[tiss]):
@@ -72,7 +117,7 @@ def compCommCorr(df, cyDict, tiss, compCommVec, studyStr):
     tight_layout()
     figure(211).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_mean_corr.png' % (studyStr,tiss))
 
-def corrPlotsByCluster(df, clusters, studyStr):
+def _corrPlotsByCluster(df, clusters, studyStr):
     """Make a corr plot for each cluster"""
     modDf = makeModuleVariables(df, clusters)
     figure(642, figsize=(23,11))
@@ -84,7 +129,7 @@ def corrPlotsByCluster(df, clusters, studyStr):
             annotate('%s: Cluster %s' % (tiss,c),xy=(0.5,0.99), xycoords='figure fraction', va = 'top', ha='center')
             figure(642).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_cluster_%s.png' % (studyStr,tiss,c))
 
-def plotModuleEmbedding(df, tiss, modules, dmatFunc, studyStr, plotLabels = True):
+def _plotModuleEmbedding(df, tiss, modules, dmatFunc, studyStr, plotLabels = True):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     clustLookup = {cy:n for n,v in modules[tiss].items() for cy in v}
     allCy = clustLookup.keys()
@@ -112,7 +157,7 @@ def plotModuleEmbedding(df, tiss, modules, dmatFunc, studyStr, plotLabels = True
     annotate('%s %s' % (studyStr,tiss),xy=(0.5,0.99),xycoords = 'figure fraction', ha='center',va='top',size='x-large')
     figure(10).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_module_embed_kpca.png' % (studyStr,tiss))
 
-def plotEmbedding(df, cyVars, tiss, dmatFunc, studyStr, plotLabels = True):
+def _plotEmbedding(df, cyVars, tiss, dmatFunc, studyStr, plotLabels = True):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     dmat = dmatFunc(df[cyVars[tiss]])
 
@@ -133,37 +178,7 @@ def plotEmbedding(df, cyVars, tiss, dmatFunc, studyStr, plotLabels = True):
     annotate('%s %s' % (studyStr,tiss),xy=(0.5,0.99),xycoords = 'figure fraction', ha='center',va='top',size='x-large')
     figure(10).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_module_embed_kpca.png' % (studyStr,tiss))
 
-
-def plotClusterEmbedding(df, labels, plotLabels = True, dmatFunc = None):
-    """Embed cytokine correlation matrix to visualize cytokine clusters"""
-    uLabels = list(unique(labels))
-
-    if not dmatFunc is None:
-        """By using KernelPCA for dimensionality reduction we don't need to impute missing values"""
-        dmat = dmatFunc(df)
-        pca = KernelPCA(kernel='precomputed')
-        gram = 1 - (dmat / dmat.max())
-        xy = pca.fit_transform(gram)
-    else:
-        pca = PCA(n_components = 2)
-        xy = pca.fit_transform(df.T)
-
-
-    colors = palettable.colorbrewer.get_map('Set1', 'qualitative', len(uLabels)).mpl_colors
-    figh = gcf()
-    clf()
-    axh = figh.add_axes([0.03,0.03,0.94,0.94])
-    axh.axis('off')
-    figh.set_facecolor('white')
-    annotationParams = dict(xytext=(0,5), textcoords='offset points', size='x-small')
-    for cyi,cy in enumerate(df.columns):
-        if plotLabels:
-            annotate(' '.join(cy.split(' ')[:-1]), xy=(xy[cyi,0],xy[cyi,1]), **annotationParams)
-        col = colors[uLabels.index(labels[cyi])]
-        scatter(xy[cyi,0], xy[cyi,1], marker = 'o', s = 100, alpha = 0.8, c = col)
-    return pca
-
-def plotClusterNetwork(df, labels):
+def _plotClusterNetwork(df, labels):
     """WORK IN PROGRESS"""
     metric = 'pearson-signed'
     minPatients = 30

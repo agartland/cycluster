@@ -5,21 +5,24 @@ from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 import numpy as np
 import pandas as pd
 
+from sklearn.mixture import GMM, DPGMM
+from comparison import _alignClusterMats
+
 __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
            'corrDmatFunc',
-           'makeModuleVariables'
+           'makeModuleVariables',
            'formReliableClusters']
 
 def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
     if dfunc is None:
         if metric in ['spearman', 'pearson']:
             """Anti-correlations are also considered as high similarity and will cluster together"""
-            dmat = (1 - cyDf.corr(method = metric, min_periods = minN).values**2).values
+            dmat = (1 - cyDf.corr(method = metric, min_periods = minN).values**2)
             dmat[np.isnan(dmat)] = 1
         elif metric in ['spearman-signed', 'pearson-signed']:
             """Anti-correlations are considered as dissimilar and will NOT cluster together"""
-            dmat = ((1 - cyDf.corr(method = metric.replace('-signed',''), min_periods = minN).values) / 2).values
+            dmat = ((1 - cyDf.corr(method = metric.replace('-signed',''), min_periods = minN).values) / 2)
             dmat[np.isnan(dmat)] = 1
         else:
             raise NameError('metric name not recognized')
@@ -46,18 +49,14 @@ def hierClusterFunc(dmatDf, K = 6, method = 'complete'):
     labels = pd.Series(labelsVec, index = dmatDf.columns)
     return labels
 
-def gmmClusterFunc(dmatDf, K = 6):
-    """Soft clustering in high-dimensions, with constraints"""
-    pass
-
-def findReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps = 500, threshold = 0.5):
+def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps = 500, threshold = 0.5):
     """Use bootstrap_clustering to determine the reliable clusters"""
     clusters = {}
     dmatDf = dmatFunc(cyDf)
     #pwrel, labels = bootstrapFeatures(dmat, clusterFunc, bootstraps = bootstraps)
     pwrelDf, labels = bootstrapObservations(cyDf, dmatFunc, clusterFunc, bootstraps = bootstraps)
     
-    dropped = pd.Series(np.zeros((cyDf.shape[1],cyDf.shape[1])).astype(bool), index = cyDf.columns)
+    dropped = pd.Series(np.zeros(cyDf.shape[1]).astype(bool), index = cyDf.columns)
     for currLab in labels.unique():
         cyMembers = labels.index[labels == currLab].tolist()
         """Step-down: start with all members and discard fringe"""
@@ -95,3 +94,42 @@ def makeModuleVariables(cyDf, labels, dropped = None):
         else:
             out = out.join(tmpS)
     return out
+
+def gmmClusterFunc(cyDf, K = 6):
+    """Soft clustering in high-dimensions (TODO: with constraints)"""
+    """Use Gaussian Mixture Models to cluster"""
+
+    """First establish that with these parameters we get the same result everytime using the same data"""
+    gmmParams = dict(n_components = K, n_init = 100, n_iter = 100, thresh = 1e-6)
+    g = GMM(**gmmParams)
+    compTmp = fillMissing(cyDf)
+
+    nreps = 20
+    for i in range(nreps):
+        g.fit(compTmp.T)
+        tmppred = g.predict_proba(compTmp.T)
+
+        if i > 0:
+            apred = _alignClusterMats(pred1,tmppred)
+            pred += apred
+            print (apred != pred1).sum()
+        else:
+            pred1 = tmppred
+            pred = tmppred
+    pred = pred/nreps
+    print np.round(pred,3)
+
+    """Now repeat 20 times, each with missing data filled stochastically"""
+    g = GMM(**gmmParams)
+    pred = np.zeros((dmatDf.columns.shape[0],K))
+    for i in range(nreps):
+        compTmp = fillMissing(cyDf)
+        g.fit(compTmp.T)
+        tmppred = g.predict_proba(compTmp.T)
+        if i > 0:
+            apred = _alignClusterMats(pred1,tmppred)
+            pred += apred
+        else:
+            pred1 = tmppred
+            pred = tmppred
+    pred = pred/nreps
