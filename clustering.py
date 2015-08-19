@@ -12,7 +12,8 @@ __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
            'corrDmatFunc',
            'makeModuleVariables',
-           'formReliableClusters']
+           'formReliableClusters',
+           'labels2modules']
 
 def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
     if dfunc is None:
@@ -81,18 +82,20 @@ def labels2modules(labels, dropped = None):
 def makeModuleVariables(cyDf, labels, dropped = None):
     """Define variable for each module by standardizing all the cytokines in the module and taking the mean"""
     if dropped is None:
-        dropped = pd.Series(np.ones((labels.shape[0])), index = labels.index)
+        dropped = pd.Series(np.ones((labels.shape[0]), dtype = bool), index = labels.index)
     standardizeFunc = lambda col: (col - np.nanmean(col))/np.nanstd(col)
     out = None
     uLabels = np.unique(labels)
     for lab in uLabels:
         ind = (labels == lab) & (~dropped)
-        tmpS = cyDf.iloc[:,ind].apply(standardizeFunc, raw = True).mean(axis = 1)
+        tmpS = cyDf.loc[:,ind].apply(standardizeFunc, raw = True).mean(axis = 1)
         tmpS.name = 'M%s' % lab
         if out is None:
             out = pd.DataFrame(tmpS)
         else:
             out = out.join(tmpS)
+    """Drop clusters that don't have any members"""
+    out = out.dropna(axis = 1, how = 'all')
     return out
 
 def gmmClusterFunc(cyDf, K = 6):
