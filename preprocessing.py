@@ -70,7 +70,7 @@ def fillMissing(df):
         out.loc[naind, c] = plugs
     return out
 
-def convertLevel(mn, mx, val, mask = False, verbose = True):
+def convertLevel(mn, mx, val, mask = False, verbose = False):
     """Map function for cleaning and censoring cytokine values
 
     Remove ">" and "," characters, while setting minimum/maximum detection level
@@ -139,7 +139,7 @@ def enforceSensitivity(cyDf, sensitivityS, truncateLevels = True, inplace = True
             cyDf.loc[:,col] = cyDf[col].map(partial(convertLevel, mn, None))
     return cyDf, maskDf
 
-def tranformCytokines(cyDf, maskDf, performLog = True, halfLOD = True, inplace = True):
+def tranformCytokines(cyDf, maskDf, performLog = True, halfLOD = True, discardCensored = False, inplace = True):
     if not inplace:
         cyDf = cyDf.copy()
     
@@ -151,4 +151,9 @@ def tranformCytokines(cyDf, maskDf, performLog = True, halfLOD = True, inplace =
     if performLog:
         """Take the log of all cytokine concentrations"""
         cyDf = np.log(cyDf)
+    if discardCensored:
+        """Force censored values to be Nan"""
+        tmpView = cyDf.values
+        tmpView[(maskDf.values == 1) | (maskDf.values == 0)] = np.nan
+
     return cyDf
