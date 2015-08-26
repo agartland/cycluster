@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import statsmodels as sm
+import statsmodels.api as sm
 from functools import partial
 
 __all__ = ['transformCytokines',
@@ -8,7 +8,8 @@ __all__ = ['transformCytokines',
            'fillMissing',
            'normalizeLevels',
            'meanSubNormalize',
-           'partialCorrNormalize']
+           'partialCorrNormalize',
+           'convertLevel']
 
 def meanSubNormalize(cyDf, cyVars = None, compCommVars = None, meanVar = None):
     """Normalize cytokine columns by the log-mean for each patient, within each compartment.
@@ -69,7 +70,7 @@ def fillMissing(df):
         out.loc[naind, c] = plugs
     return out
 
-def _convertLevel(mn, mx, val, mask = False):
+def convertLevel(mn, mx, val, mask = False, verbose = True):
     """Map function for cleaning and censoring cytokine values
 
     Remove ">" and "," characters, while setting minimum/maximum detection level
@@ -90,26 +91,28 @@ def _convertLevel(mn, mx, val, mask = False):
         if val == 'NS':
             out = mn
         elif val == 'ND':
-            out = nan
+            out = np.nan
         elif val.find('N/A') >= 0:
-            out = nan
+            out = np.nan
         else:
             raise BaseException, "Unexpected value: %s" % val
 
     if not mx is None:
         if out >= mx:
-            print 'Max truncation: %1.2f to %1.2f' % (out,mx)
+            if verbose:
+                print 'Max truncation: %1.2f to %1.2f' % (out,mx)
             out = min(out,mx)
             if mask:
                 return 1
     if not mn is None:
         if out <= mn:
-            print 'Min truncation %1.2f to %1.2f' % (out,mn)
+            if verbose:
+                print 'Min truncation %1.2f to %1.2f' % (out,mn)
             out = max(out,mn)
             if mask:
                 return 0
     if mask:
-        if isnan(out):
+        if np.isnan(out):
             return -1
         else:
             return 0.5
