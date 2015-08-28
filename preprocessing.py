@@ -139,9 +139,12 @@ def enforceSensitivity(cyDf, sensitivityS, truncateLevels = True, inplace = True
             cyDf.loc[:,col] = cyDf[col].map(partial(convertLevel, mn, None))
     return cyDf, maskDf
 
-def tranformCytokines(cyDf, maskDf, performLog = True, halfLOD = True, discardCensored = False, inplace = True):
+def tranformCytokines(cyDf, maskDf = None, performLog = True, halfLOD = True, discardCensored = False, inplace = True):
     if not inplace:
         cyDf = cyDf.copy()
+
+    if maskDf is None:
+        maskDf = pd.DataFrame(np.zeros(cyDf.shape), index = cyDf.index, columns = cyDf.columns)
     
     if hlafLOD:
         """Replace left-censored values with the LOD/2"""
