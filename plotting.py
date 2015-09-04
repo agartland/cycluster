@@ -10,17 +10,21 @@ from functools import partial
 from myboxplot import manyboxplots
 from corrplots import combocorrplot
 
-import cycluster as cy
+from corrplots import validPairwiseCounts, partialcorr
+import statsmodels.api as sm
+from scipy import stats
 
-#import networkx as nx
-#import seaborn as sns
-#from corrplots import validPairwiseCounts, partialcorr
-#import statsmodels.api as sm
+import seaborn as sns
+sns.set(style = 'darkgrid', palette = 'muted', font_scale = 1.75)
+
+from . import labels2modules, makeModuleVariables
 
 __all__ = ['plotModuleEmbedding',
            'plotModuleCorr',
-           'cyBoxPlots',
-           'logisticRegressionBars']
+           'cytokineBoxPlots',
+           'logisticRegressionBars',
+           'plotMeanCorr',
+           'outcomeBoxplots']
 
 def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLabels = True):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
@@ -62,9 +66,9 @@ def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLab
 
 def plotModuleCorr(cyDf, labels, plotLabel, dropped = None, compCommVar = None):
     """Make a corr plot for a module."""
-    modDf = cy.makeModuleVariables(cyDf[labels.index], labels, dropped = dropped)
+    modDf = makeModuleVariables(cyDf[labels.index], labels, dropped = dropped)
     modVar = 'M%s' % plotLabel
-    cyVars = cy.labels2modules(labels, dropped = dropped)[plotLabel]
+    cyVars = labels2modules(labels, dropped = dropped)[plotLabel]
     if not compCommVar is None:
         cyVars.append(compCommVar)
     tmpDf = cyDf[cyVars].join(modDf[modVar]).copy()
@@ -98,7 +102,7 @@ def cyBoxPlots(cyDf, vRange, basefile):
         #sns.violinplot(plotDf, order = sortedCy[int(i*k) : int(i*k+k)], ax = axh, alpha = 0.7, inner = 'points')
         manyboxplots(cyDf, cols = sortedCy[int(i*k) : int(i*k+k)], axh = axh, alpha = 0.7, vRange = vRange, xRot = 90, violin = False)
         plt.ylabel('Concentration (log-pg/mL)')
-        plt.title(cySet + ' Analytes (page %d)' % (i+1))
+        plt.title('Cytokines (page %d)' % (i+1))
         figh.savefig('%s_%02d.png' % (basefile,i))
 
 def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, sigThreshold = 0.05):
@@ -141,6 +145,40 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
     plt.tight_layout()
     plt.show()
 
+def plotMeanCorr(df, meanVar):
+    """Plot of each cytokine's correlation with the mean."""
+    cyList = [c for c in df.columns if not c == meanVar]
+
+    tmpCorr = np.zeros((len(cyList),2))
+    for i,s in enumerate(cyList):
+        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(df[s], df[meanVar], method = 'pearson')
+    sorti = np.argsort(tmpCorr[:,0])
+    tmpCorr = tmpCorr[sorti,:]
+
+    """Use q-value significance threshold"""
+    sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha = 0.2, method = 'fdr_bh')
+    """Use p-value significance threshold"""
+    sigInd = tmpCorr[:,1] < 0.05
+
+    plt.clf()
+    plt.barh(np.arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0]**2, color = 'black', align='center')
+    plt.barh(np.arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0]**2, color = 'red', align='center')
+    plt.yticks(range(tmpCorr.shape[0]), np.array(cyList)[sorti])
+    plt.grid(True, axis = 'x')
+    plt.xlabel('Correlation between\ncytokines and the "complete-common" mean ($^*R^2$)')
+    plt.ylim((-1, tmpCorr.shape[0]))
+    plt.xlim((0,1))
+    plt.tight_layout()
+
+def outcomeBoxplots(cyDf, cyVar, outcomeVar):
+    figh = plt.gcf()
+    plt.clf()
+    axh = plt.subplot(111)
+    sns.boxplot(y = cyVar, x = outcomeVar, data = cyDf, ax = axh, order  = [0,1])
+    sns.stripplot(y = cyVar, x = outcomeVar, data = cyDf, jitter = True, ax = axh, order  = [0,1])
+    plt.xticks([0,1], ['False', 'True'])
+    plt.show()
+
 def _cyNHeatmap(df, cyDict, cySets, studyStr):
     """Heatmap showing number of data points for each potential pairwise comparison of cytokines"""
     figure(2,figsize=(15,11.8))
@@ -155,31 +193,6 @@ def _cyNHeatmap(df, cyDict, cySets, studyStr):
     heatmap(pwCounts, cmap = cm.gray, edgecolors='w', labelSize='small')
     tight_layout()
     figure(3).savefig(DATA_PATH + 'RandolphFlu/figures/%s_num_cy_All.png' % studyStr)
-
-def _compCommCorr(df, cyDict, tiss, compCommVec, studyStr):
-    """Plot of each cytokine's correlation with the mean."""
-    tmpCorr = zeros((len(cyDict[tiss]),2))
-    for i,s in enumerate(cyDict[tiss]):
-        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(df[s], compCommVec, method = 'spearman')
-    sorti = argsort(tmpCorr[:,0])
-    tmpCorr = tmpCorr[sorti,:]
-
-    """Use q-value significance threshold"""
-    sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha = 0.2, method = 'fdr_bh')
-    """Use p-value significance threshold"""
-    sigInd = tmpCorr[:,1] < 0.05
-
-    figure(211, figsize = (10,11.8))
-    clf()
-    barh(arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0]**2, color = 'black', align='center')
-    barh(arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0]**2, color = 'red', align='center')
-    yticks(range(tmpCorr.shape[0]), array([cy.split(' ')[0] for cy in cyDict[tiss]])[sorti])
-    grid(True, axis = 'x')
-    xlabel('Correlation between\n%s cytokines and the "complete-common" mean ($^*R^2$)' % (tiss))
-    ylim((-1,tmpCorr.shape[0]))
-    xlim((0,1))
-    tight_layout()
-    figure(211).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_mean_corr.png' % (studyStr,tiss))
 
 def _plotClusterNetwork(df, labels):
     """WORK IN PROGRESS"""
