@@ -12,6 +12,12 @@ __all__ = ['compareClusters',
            'crossCompartmentCorr']
 
 def compareClusters(labelsA, labelsB, method = 'ARI', alignFirst = True):
+    """Requre that labelsA and labelsB have the same index"""
+    assert len(labelsA.index) == len(labelsB.index)
+    assert (labelsA.index == labelsB.index).sum() == len(labelsA.index)
+    uLabels = np.unique(labelsA)
+    assert (uLabels == np.unique(labelsB)).sum() == uLabels.shape[0]
+
     if alignFirst:
         alignedB = alignClusters(labelsA, labelsB)
     else:
@@ -21,6 +27,15 @@ def compareClusters(labelsA, labelsB, method = 'ARI', alignFirst = True):
         s = metrics.adjusted_rand_score(labelsA.values, alignedB.values)
     elif method == 'AMI':
         s = metrics.adjusted_mutual_info_score(labelsA.values, alignedB.values)
+    elif method == 'overlap':
+        s = np.zeros(uLabels.shape[0])
+        for labi, lab in enumerate(uLabels):
+            membersA = labelsA.index[labelsA == lab]
+            membersB = alignedB.index[alignedB == lab]
+            accA = np.sum([1 for cy in membersA if cy in membersB]) / len(membersA)
+            accB = np.sum([1 for cy in membersB if cy in membersA]) / len(membersB)
+            s[labi] = (accA + accB) / 2
+
     return s
 
 def plotClusterOverlap(labelsA, labelsB):

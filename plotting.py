@@ -7,13 +7,14 @@ from sklearn.decomposition import KernelPCA, PCA
 from sklearn.manifold import TSNE
 import tsne
 from functools import partial
-from myboxplot import *
+from myboxplot import manyboxplots
 from corrplots import combocorrplot
+
+import cycluster as cy
 
 #import networkx as nx
 #import seaborn as sns
 #from corrplots import validPairwiseCounts, partialcorr
-#from myboxplot import myboxplot, manyboxplots
 #import statsmodels.api as sm
 
 __all__ = ['plotModuleEmbedding',
@@ -179,8 +180,6 @@ def _compCommCorr(df, cyDict, tiss, compCommVec, studyStr):
     xlim((0,1))
     tight_layout()
     figure(211).savefig(DATA_PATH + 'RandolphFlu/figures/%s_%s_mean_corr.png' % (studyStr,tiss))
-
-
 
 def _plotClusterNetwork(df, labels):
     """WORK IN PROGRESS"""
