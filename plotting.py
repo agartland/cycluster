@@ -1,18 +1,25 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import palettable
 import tsne
 from sklearn.decomposition import KernelPCA, PCA
 from sklearn.manifold import TSNE
 import tsne
+import itertools
 from functools import partial
 from myboxplot import manyboxplots
-from corrplots import combocorrplot
 
-from corrplots import validPairwiseCounts, partialcorr
+from matplotlib.gridspec import GridSpec
+from matplotlib import cm
+import scipy.cluster.hierarchy as sch
+
+from corrplots import validPairwiseCounts, partialcorr,combocorrplot
 import statsmodels.api as sm
 from scipy import stats
+
+import sklearn
 
 import seaborn as sns
 sns.set(style = 'darkgrid', palette = 'muted', font_scale = 1.75)
@@ -24,7 +31,8 @@ __all__ = ['plotModuleEmbedding',
            'cytokineBoxPlots',
            'logisticRegressionBars',
            'plotMeanCorr',
-           'outcomeBoxplots']
+           'outcomeBoxplot',
+           'plotROC']
 
 def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLabels = True):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
@@ -141,7 +149,7 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
     plt.xlabel('Association with %s (odds-ratio)' % outcome)
     plt.ylim((k, -1))
     xl = plt.xlim()
-    plt.xlim((0.05, xl[1]))
+    plt.xlim((-0.05, xl[1]))
     plt.tight_layout()
     plt.show()
 
@@ -170,13 +178,47 @@ def plotMeanCorr(df, meanVar):
     plt.xlim((0,1))
     plt.tight_layout()
 
-def outcomeBoxplots(cyDf, cyVar, outcomeVar):
+def outcomeBoxplot(cyDf, cyVar, outcomeVar):
     figh = plt.gcf()
     plt.clf()
     axh = plt.subplot(111)
     sns.boxplot(y = cyVar, x = outcomeVar, data = cyDf, ax = axh, order  = [0,1])
     sns.stripplot(y = cyVar, x = outcomeVar, data = cyDf, jitter = True, ax = axh, order  = [0,1])
     plt.xticks([0,1], ['False', 'True'])
+    plt.show()
+
+def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
+    """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework."""
+    cv = sklearn.cross_validation.KFold(n=cyDf.shape[0], n_folds=n_folds, shuffle=True, random_state=110820)
+
+    plt.clf()
+    for cvar in cyVars:
+        mean_fpr = np.linspace(0, 1, 100)
+        mean_tpr = np.zeros(mean_fpr.shape[0])
+        all_tpr = []
+        for i, (trainInd, testInd) in enumerate(cv):
+            
+            trainDf = cyDf[[outcomeVar, cvar]].iloc[trainInd]
+            testDf = cyDf[[outcomeVar, cvar]].iloc[testInd]
+            model = sm.GLM(endog = trainDf[outcomeVar].astype(float), exog = sm.add_constant(trainDf[cvar]), family = sm.families.Binomial())
+            outcomePred = model.fit().predict(sm.add_constant(testDf[cvar]))
+            
+            fpr, tpr, thresholds = sklearn.metrics.roc_curve(testDf[outcomeVar].values, outcomePred)
+            mean_tpr += np.interp(mean_fpr, fpr, tpr)
+            
+        mean_tpr /= len(cv)
+        mean_auc = sklearn.metrics.auc(mean_fpr, mean_tpr)
+        mean_tpr[0], mean_tpr[-1] = 0,1
+        plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvar, mean_auc))
+
+    plt.plot([0, 1], [0, 1], '--', color='gray', label='Luck')
+
+    plt.xlim([-0.05, 1.05])
+    plt.ylim([-0.05, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC for %s' % outcomeVar)
+    plt.legend(loc="lower right")
     plt.show()
 
 def _cyNHeatmap(df, cyDict, cySets, studyStr):
@@ -292,3 +334,94 @@ def _plotClusterNetwork(df, labels):
                     ha='center')
         colorLegend(labels=df.columns,colors = [c for x,c in zip(df.columns,colors)],loc=0)
         title(titleStr)
+
+def _colors2labels(labels, setStr = 'Set3', cmap = None):
+    """Return pd.Series of colors based on labels"""
+    if cmap is None:
+        N = max(3,min(12,len(np.unique(labels))))
+        cmap = palettable.colorbrewer.get_map(setStr,'Qualitative',N).mpl_colors
+    cmapLookup = {k:col for k,col in zip(sorted(np.unique(labels)),itertools.cycle(cmap))}
+    return labels.map(cmapLookup.get)
+
+def _clean_axis(ax):
+    """Remove ticks, tick labels, and frame from axis"""
+    ax.get_xaxis().set_ticks([])
+    ax.get_yaxis().set_ticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    ax.grid(False)
+    ax.set_axis_bgcolor('white')
+
+def plotHierClust(dmatDf, Z, labels=None, titleStr=None, vRange=None, tickSz='small', cmap=None, cmapLabel=''):
+    """Display a hierarchical clustering result."""
+    if vRange is None:
+        vmin = np.min(np.ravel(dmatDf.values))
+        vmax = np.max(np.ravel(dmatDf.values))
+    else:
+        vmin,vmax = vRange
+    
+    if cmap is None:
+        if vmin < 0 and vmax > 0 and vmax < 1 and vmin > -1:
+            cmap = cm.RdBu_r
+        else:
+            cmap = cm.YlOrRd
+
+    fig = plt.gcf()
+    fig.clf()
+
+    if labels is None:
+        denAX = fig.add_subplot(GridSpec(1,1,left=0.05,bottom=0.05,right=0.15,top=0.85)[0,0])
+        heatmapAX = fig.add_subplot(GridSpec(1,1,left=0.16,bottom=0.05,right=0.78,top=0.85)[0,0])
+        scale_cbAX = fig.add_subplot(GridSpec(1,1,left=0.87,bottom=0.05,right=0.93,top=0.85)[0,0])
+    else:
+        denAX = fig.add_subplot(GridSpec(1,1,left=0.05,bottom=0.05,right=0.15,top=0.85)[0,0])
+        cbAX = fig.add_subplot(GridSpec(1,1,left=0.16,bottom=0.05,right=0.19,top=0.85)[0,0])
+        heatmapAX = fig.add_subplot(GridSpec(1,1,left=0.2,bottom=0.05,right=0.78,top=0.85)[0,0])
+        scale_cbAX = fig.add_subplot(GridSpec(1,1,left=0.87,bottom=0.05,right=0.93,top=0.85)[0,0])
+
+    my_norm = mpl.colors.Normalize(vmin = vmin, vmax = vmax)
+
+    """Dendrogaram along the rows"""
+    plt.sca(denAX)
+    denD = sch.dendrogram(Z, color_threshold=np.inf, orientation='right')
+    colInd = denD['leaves']
+    _clean_axis(denAX)
+
+    if not labels is None:
+        cbSE = _colors2labels(labels)
+        axi = cbAX.imshow([[x] for x in cbSE.iloc[colInd].values],interpolation='nearest',aspect='auto',origin='lower')
+        
+        _clean_axis(cbAX)
+
+    """Heatmap plot"""
+    axi = heatmapAX.imshow(dmatDf.values[colInd,:][:,colInd],interpolation='nearest',aspect='auto',origin='lower',norm=my_norm,cmap=cmap)
+    _clean_axis(heatmapAX)
+
+    """Column tick labels along the rows"""
+    if tickSz is None:
+        heatmapAX.set_yticks(())
+        heatmapAX.set_xticks(())
+    else:
+        heatmapAX.set_yticks(np.arange(dmatDf.shape[1]))
+        heatmapAX.yaxis.set_ticks_position('right')
+        heatmapAX.set_yticklabels(dmatDf.columns[colInd],fontsize=tickSz,fontname='Consolas')
+
+        """Column tick labels"""
+        heatmapAX.set_xticks(np.arange(dmatDf.shape[1]))
+        heatmapAX.xaxis.set_ticks_position('top')
+        xlabelsL = heatmapAX.set_xticklabels(dmatDf.columns[colInd],fontsize=tickSz,rotation=90,fontname='Consolas')
+
+        """Remove the tick lines"""
+        for l in heatmapAX.get_xticklines() + heatmapAX.get_yticklines(): 
+            l.set_markersize(0)
+
+    """Add a colorbar"""
+    cb = fig.colorbar(axi,scale_cbAX) # note that we could pass the norm explicitly with norm=my_norm
+    cb.set_label(cmapLabel)
+    """Make colorbar labels smaller"""
+    for t in cb.ax.yaxis.get_ticklabels():
+        t.set_fontsize('small')
+
+    """Add title as xaxis label"""
+    if not titleStr is None:
+        heatmapAX.set_xlabel(titleStr,size='x-large')
