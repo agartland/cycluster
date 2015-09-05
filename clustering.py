@@ -44,11 +44,14 @@ def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
                     dmat[j,i] = d
     return pd.DataFrame(dmat, columns = cyDf.columns, index = cyDf.columns)
 
-def hierClusterFunc(dmatDf, K = 6, method = 'complete'):
+def hierClusterFunc(dmatDf, K = 6, method = 'complete', returnLinkageMat = False):
     hclusters = sch.linkage(dmatDf.values, method = method)
     labelsVec = sch.fcluster(hclusters, K, criterion = 'maxclust')
     labels = pd.Series(labelsVec, index = dmatDf.columns)
-    return labels
+    if not returnLinkageMat:
+        return labels
+    else:
+        return labels, hclusters
 
 def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps = 500, threshold = 0.5):
     """Use bootstrap_clustering to determine the reliable clusters"""
@@ -65,7 +68,7 @@ def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps = 500, threshol
             meanReliability = (1 - pwrelDf[cy].loc[cyMembers].drop(cy).mean())
             if  meanReliability < threshold:
                 dropped[cy] = True
-                print 'Excluded %s from cluster %s: mean reliability was %1.0f%%' % (cy, currLab, 100 * meanReliability)
+                print 'Excluded %s from cluster %s: mean reliability was %1.1f%%' % (cy, currLab, 100 * meanReliability)
         
         """Consider step-up strategy: start with best and add those that fit"""
     return pwrelDf, labels, dropped
