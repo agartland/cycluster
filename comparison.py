@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
 import itertools
@@ -48,7 +49,7 @@ def plotClusterOverlap(labelsA, labelsB):
     
     yA = np.linspace(10,0,np.unique(labelsA).shape[0])
     yB = np.linspace(10,0,np.unique(labelsB).shape[0])
-    
+
     axh = plt.gca()
     axh.cla()
     annParams = dict(ha = 'center', va = 'center', size = 'x-large', zorder = 15)
@@ -58,8 +59,9 @@ def plotClusterOverlap(labelsA, labelsB):
             if ai == 0:
                 axh.annotate(s = '%s' % b, xy = (1,yB[bi]), color = 'white', **annParams)
             axh.plot([0,1], [yA[ai], yB[bi]], '-', lw = 20 * _thickness(labelsA, alignedB, a, b), color = 'black', alpha = 0.7, zorder = 5)
+
     axh.scatter(np.zeros(np.unique(labelsA).shape[0]), yA, s = 1000, color = 'red', zorder = 10)
-    axh.scatter(np.ones(np.unique(labelsB).shape[0]), yB, s = 1000, color = 'blue', zorder = 10)
+    axh.scatter(np.ones(np.unique(alignedB).shape[0]), yB, s = 1000, color = 'blue', zorder = 10)
     plt.axis('off')
     plt.draw()
 

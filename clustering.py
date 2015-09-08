@@ -1,3 +1,4 @@
+from __future__ import division
 import scipy.cluster.hierarchy as sch
 #import scipy.spatial.distance as distance
 from gapstat import computeGapStat
