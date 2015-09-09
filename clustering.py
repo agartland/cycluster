@@ -82,6 +82,9 @@ def labels2modules(labels, dropped = None):
         todrop = dropped.index[dropped].tolist()
         for lab in out.keys():
             out[lab] = [cy for cy in out[lab] if not cy in todrop]
+            if len(out[lab]) == 0:
+                _ = out.pop(lab)
+
     return out
 
 def makeModuleVariables(cyDf, labels, dropped = None):
