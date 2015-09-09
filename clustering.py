@@ -6,14 +6,15 @@ import numpy as np
 import pandas as pd
 
 from sklearn.mixture import GMM, DPGMM
-from comparison import _alignClusterMats
+from comparison import _alignClusterMats, alignClusters
 
 __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
            'corrDmatFunc',
            'makeModuleVariables',
            'formReliableClusters',
-           'labels2modules']
+           'labels2modules',
+           'cyclusterClass']
 
 def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
     if dfunc is None:
@@ -139,3 +140,28 @@ def gmmClusterFunc(cyDf, K = 6):
             pred1 = tmppred
             pred = tmppred
     pred = pred/nreps
+
+class cyclusterClass(object):
+    def __init__(self, studyStr, sampleStr, normed, cyDf, compCommS):
+        self.studyStr = studyStr
+        self.sampleStr = sampleStr
+        self.normed = normed
+        self.cyDf = cyDf
+        self.compCommS = compCommS
+        self.cyVars = cyDf.columns.tolist()
+
+    def clusterCytokines(self, alignLabels=None):
+        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, hierClusterFunc)
+        if not alignLabels is None:
+            self.labels = alignClusters(alignLabels, self.labels)
+        self.modS = labels2modules(self.labels, dropped = self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
+        _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat = True)
+        self.dmatDf = corrDmatFunc(self.cyDf)
+
+    @property
+    def name(self):
+        return '%s_%s_%s_' % (self.studyStr, self.sampleStr, 'normed' if self.normed else 'raw')
+    @property
+    def withMean(self):
+        return self.cyDf.join(self.compCommS)
