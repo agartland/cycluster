@@ -1,3 +1,4 @@
+from __future__ import division
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,15 +25,17 @@ import sklearn
 import seaborn as sns
 sns.set(style = 'darkgrid', palette = 'muted', font_scale = 1.75)
 
-from . import labels2modules, makeModuleVariables
+from cycluster import labels2modules, makeModuleVariables
 
 __all__ = ['plotModuleEmbedding',
            'plotModuleCorr',
-           'cytokineBoxPlots',
+           'plotInterModuleCorr',
+           'cyBoxPlots',
            'logisticRegressionBars',
            'plotMeanCorr',
            'outcomeBoxplot',
-           'plotROC']
+           'plotROC',
+           'plotInterModuleCorr']
 
 def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLabels = True):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
@@ -76,7 +79,7 @@ def plotModuleCorr(cyDf, labels, plotLabel, dropped = None, compCommVar = None):
     """Make a corr plot for a module."""
     modDf = makeModuleVariables(cyDf[labels.index], labels, dropped = dropped)
     modVar = 'M%s' % plotLabel
-    cyVars = labels2modules(labels, dropped = dropped)[plotLabel]
+    cyVars = labels2modules(labels, dropped = None)[plotLabel]
     if not compCommVar is None:
         cyVars.append(compCommVar)
     tmpDf = cyDf[cyVars].join(modDf[modVar]).copy()
@@ -90,7 +93,19 @@ def plotModuleCorr(cyDf, labels, plotLabel, dropped = None, compCommVar = None):
     axh = plt.gca()
     axh.annotate('Module M%s' % (plotLabel), xy=(0.5,0.99), xycoords='figure fraction', va = 'top', ha='center')
 
-def cyBoxPlots(cyDf, vRange, basefile):
+def plotInterModuleCorr(cyDf, labels, dropped = None, compCommVar = None):
+    """Make a plot showing inter-module correlation"""
+    modDf = makeModuleVariables(cyDf[labels.index], labels, dropped = dropped)
+    modVars = modDf.columns.tolist()
+    if not compCommVar is None:
+        modDf = modDf.join(cyDf[compCommVar])
+        modVars += [compCommVar]
+
+    figh = plt.gcf()
+    figh.clf()
+    combocorrplot(modDf[modVars], method = 'pearson')
+
+def cyBoxPlots(cyDf, basefile, vRange=None,):
     """Boxplots of cytokines sorted by median"""
     def sortFunc(df, c):
         tmp = df[c].dropna()

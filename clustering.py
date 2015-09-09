@@ -1,3 +1,4 @@
+from __future__ import division
 import scipy.cluster.hierarchy as sch
 #import scipy.spatial.distance as distance
 from gapstat import computeGapStat
@@ -86,7 +87,7 @@ def labels2modules(labels, dropped = None):
 def makeModuleVariables(cyDf, labels, dropped = None):
     """Define variable for each module by standardizing all the cytokines in the module and taking the mean"""
     if dropped is None:
-        dropped = pd.Series(np.ones((labels.shape[0]), dtype = bool), index = labels.index)
+        dropped = pd.Series(np.zeros((labels.shape[0]), dtype = bool), index = labels.index)
     standardizeFunc = lambda col: (col - np.nanmean(col))/np.nanstd(col)
     out = None
     uLabels = np.unique(labels)
