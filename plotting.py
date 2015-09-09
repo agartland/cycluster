@@ -129,7 +129,8 @@ def cyBoxPlots(cyDf, basefile, vRange=None,):
         figh.savefig('%s_%02d.png' % (basefile,i))
 
 def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, sigThreshold = 0.05):
-    """Forest plot of each predictor association with binary outcome."""
+    """Forest plot of each predictor association with binary outcome.
+    TODO: try/catch PerfectSeparationError in sm.GLM"""
     """OR, LL, UL, p, ranksum-Z, p"""
     k = len(predictors)
     assoc = np.zeros((k,6))
@@ -203,7 +204,8 @@ def outcomeBoxplot(cyDf, cyVar, outcomeVar):
     plt.show()
 
 def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
-    """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework."""
+    """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework.
+    TODO: try/catch PerfectSeparationError in sm.GLM"""
     cv = sklearn.cross_validation.KFold(n=cyDf.shape[0], n_folds=n_folds, shuffle=True, random_state=110820)
 
     plt.clf()
@@ -212,7 +214,6 @@ def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
         mean_tpr = np.zeros(mean_fpr.shape[0])
         all_tpr = []
         for i, (trainInd, testInd) in enumerate(cv):
-            
             trainDf = cyDf[[outcomeVar, cvar]].iloc[trainInd]
             testDf = cyDf[[outcomeVar, cvar]].iloc[testInd]
             model = sm.GLM(endog = trainDf[outcomeVar].astype(float), exog = sm.add_constant(trainDf[cvar]), family = sm.families.Binomial())
