@@ -128,19 +128,25 @@ def cyBoxPlots(cyDf, basefile, vRange=None,):
         plt.title('Cytokines (page %d)' % (i+1))
         figh.savefig('%s_%02d.png' % (basefile,i))
 
-def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, sigThreshold = 0.05):
-    """Forest plot of each predictor association with binary outcome.
-    TODO: try/catch PerfectSeparationError in sm.GLM"""
+def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, sigThreshold = 0.05, printPQ = False):
+    """Forest plot of each predictor association with binary outcome."""
     """OR, LL, UL, p, ranksum-Z, p"""
     k = len(predictors)
     assoc = np.zeros((k,6))
     for i,predc in enumerate(predictors):
         tmp = df[[outcome, predc]].dropna()
         model = sm.GLM(endog = df[outcome].astype(float), exog = sm.add_constant(df[[predc] + adj]), missing = 'drop', family = sm.families.Binomial())
-        res = model.fit()
-        assoc[i, 0] = np.exp(res.params[predc])
-        assoc[i, 3] = res.pvalues[predc]
-        assoc[i, 1:3] = np.exp(res.conf_int().loc[predc])
+        try:
+            res = model.fit()
+            assoc[i, 0] = np.exp(res.params[predc])
+            assoc[i, 3] = res.pvalues[predc]
+            assoc[i, 1:3] = np.exp(res.conf_int().loc[predc])
+        except sm.tools.sm_exceptions.PerfectSeparationError:
+            assoc[i, 0] = 0
+            assoc[i, 3] = 0
+            assoc[i, 1:3] = [0,0]
+            print 'PerfectSeparationError: %s' % predc
+
         z, pvalue = stats.ranksums(tmp[predc].loc[tmp[outcome] == 1], tmp[predc].loc[df[outcome] == 0].dropna())
         assoc[i, 4] = z
         assoc[i, 5] = pvalue
@@ -154,7 +160,11 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
 
     figh = plt.gcf()
     figh.clf()
-    axh = figh.add_subplot(111)
+    if printPQ:
+        pqh = figh.add_axes([0.70, 0.1, 0.20, 0.80], frameon=False)
+        axh = figh.add_axes([0.1, 0.1, 0.70, 0.80], frameon=True)
+    else:
+        axh = figh.add_subplot(111)
     axh.barh(bottom = np.arange(k)[~sigInd], left = assoc[~sigInd,1], width = assoc[~sigInd,2] - assoc[~sigInd,1], color = 'black', align = 'center')
     axh.barh(bottom = np.arange(k)[sigInd], left = assoc[sigInd,1], width = assoc[sigInd,2] - assoc[sigInd,1], color = 'black', align = 'center')
     axh.scatter(assoc[sigInd,0], np.arange(k)[sigInd],s = 100, color = 'red', zorder = 10)
@@ -164,9 +174,24 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
     plt.grid(True, axis = 'x')
     plt.xlabel('Association with %s (odds-ratio)' % outcome)
     plt.ylim((k, -1))
+    yl = plt.ylim()
     xl = plt.xlim()
-    plt.xlim((-0.05, xl[1]))
-    plt.tight_layout()
+    plt.xlim((0, xl[1]))
+    if printPQ:
+        annParams = dict(size='medium', weight='bold', color='black', ha='left', va='center')
+        if useFDR:
+            values = qvalues
+            sigStr = 'q = %1.2g'
+        else:
+            values = assoc[:,3]
+            sigStr = 'p = %1.2g'
+        for i,v in enumerate(values):
+            pqh.annotate(sigStr % v, xy=(0.1,i), **annParams)
+        pqh.set_ylim(yl)
+        pqh.set_xlim(-1,1)
+        pqh.set_xticks(())
+        pqh.set_yticks(())
+    #plt.tight_layout()
     plt.show()
 
 def plotMeanCorr(df, meanVar):
@@ -204,8 +229,7 @@ def outcomeBoxplot(cyDf, cyVar, outcomeVar):
     plt.show()
 
 def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
-    """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework.
-    TODO: try/catch PerfectSeparationError in sm.GLM"""
+    """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework."""
     cv = sklearn.cross_validation.KFold(n=cyDf.shape[0], n_folds=n_folds, shuffle=True, random_state=110820)
 
     plt.clf()
@@ -213,16 +237,21 @@ def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
         mean_fpr = np.linspace(0, 1, 100)
         mean_tpr = np.zeros(mean_fpr.shape[0])
         all_tpr = []
+        counter = 0
         for i, (trainInd, testInd) in enumerate(cv):
             trainDf = cyDf[[outcomeVar, cvar]].iloc[trainInd]
             testDf = cyDf[[outcomeVar, cvar]].iloc[testInd]
             model = sm.GLM(endog = trainDf[outcomeVar].astype(float), exog = sm.add_constant(trainDf[cvar]), family = sm.families.Binomial())
-            outcomePred = model.fit().predict(sm.add_constant(testDf[cvar]))
+            try:
+                outcomePred = model.fit().predict(sm.add_constant(testDf[cvar]))
+                
+                fpr, tpr, thresholds = sklearn.metrics.roc_curve(testDf[outcomeVar].values, outcomePred)
+                mean_tpr += np.interp(mean_fpr, fpr, tpr)
+                counter += 1
+            except sm.tools.sm_exceptions.PerfectSeparationError:
+                print 'PerfectSeparationError: %s, %s (skipping this train/test split)' % (cvar,outcomeVar)
             
-            fpr, tpr, thresholds = sklearn.metrics.roc_curve(testDf[outcomeVar].values, outcomePred)
-            mean_tpr += np.interp(mean_fpr, fpr, tpr)
-            
-        mean_tpr /= len(cv)
+        mean_tpr /= counter
         mean_auc = sklearn.metrics.auc(mean_fpr, mean_tpr)
         mean_tpr[0], mean_tpr[-1] = 0,1
         plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvar, mean_auc))
