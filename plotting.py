@@ -37,21 +37,23 @@ __all__ = ['plotModuleEmbedding',
            'plotROC',
            'plotInterModuleCorr']
 
-def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLabels = True):
+def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1]):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     uLabels = np.unique(labels).tolist()
+
+    n_components = max(plotDims) + 1
 
     dmat = dmatDf.values
     
     if method == 'kpca':
         """By using KernelPCA for dimensionality reduction we don't need to impute missing values"""
-        pca = KernelPCA(kernel='precomputed')
+        pca = KernelPCA(kernel='precomputed', n_components=n_components)
         gram = 1 - (dmat / dmat.max())
         xy = pca.fit_transform(gram)
     elif method == 'tsne':
         xy = tsne.run_tsne(dmat)
     elif method == 'sklearn-tsne':
-        tsneObj = TSNE(n_components=2, metric='precomputed', random_state = 0)
+        tsneObj = TSNE(n_components=n_components, metric='precomputed', random_state=0)
         xy = tsneObj.fit_transform(dmat)
 
     colors = palettable.colorbrewer.get_map('Set1', 'qualitative', len(uLabels)).mpl_colors
@@ -70,9 +72,9 @@ def plotModuleEmbedding(dmatDf, labels, dropped = None, method = 'tsne', plotLab
             alpha = 0.8
 
         if plotLabels:
-            axh.annotate(cyLab, xy = (xy[cyi,0], xy[cyi,1]), **annotationParams)
+            axh.annotate(cyLab, xy = (xy[cyi,plotDims[0]], xy[cyi,plotDims[1]]), **annotationParams)
         col = colors[uLabels.index(labels[cyi])]
-        axh.scatter(xy[cyi,0], xy[cyi,1], marker = 'o', s = 100, alpha = alpha, c = col)
+        axh.scatter(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]], marker='o', s=100, alpha=alpha, c=col)
     plt.draw()
 
 def plotModuleCorr(cyDf, labels, plotLabel, dropped = None, compCommVar = None):
@@ -134,8 +136,8 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
     k = len(predictors)
     assoc = np.zeros((k,6))
     for i,predc in enumerate(predictors):
-        tmp = df[[outcome, predc]].dropna()
-        model = sm.GLM(endog = df[outcome].astype(float), exog = sm.add_constant(df[[predc] + adj]), missing = 'drop', family = sm.families.Binomial())
+        tmp = df[[outcome, predc] + adj].dropna()
+        model = sm.GLM(endog = tmp[outcome].astype(float), exog = sm.add_constant(tmp[[predc] + adj]), family = sm.families.Binomial())
         try:
             res = model.fit()
             assoc[i, 0] = np.exp(res.params[predc])
@@ -147,7 +149,7 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
             assoc[i, 1:3] = [0,0]
             print 'PerfectSeparationError: %s' % predc
 
-        z, pvalue = stats.ranksums(tmp[predc].loc[tmp[outcome] == 1], tmp[predc].loc[df[outcome] == 0].dropna())
+        z, pvalue = stats.ranksums(tmp[predc].loc[tmp[outcome] == 1], tmp[predc].loc[tmp[outcome] == 0])
         assoc[i, 4] = z
         assoc[i, 5] = pvalue
         
@@ -219,13 +221,18 @@ def plotMeanCorr(df, meanVar):
     plt.xlim((0,1))
     plt.tight_layout()
 
-def outcomeBoxplot(cyDf, cyVar, outcomeVar):
+def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True):
     figh = plt.gcf()
     plt.clf()
     axh = plt.subplot(111)
     sns.boxplot(y = cyVar, x = outcomeVar, data = cyDf, ax = axh, order  = [0,1])
     sns.stripplot(y = cyVar, x = outcomeVar, data = cyDf, jitter = True, ax = axh, order  = [0,1])
     plt.xticks([0,1], ['False', 'True'])
+    if printP:
+        tmp = cyDf[[cyVar, outcomeVar]].dropna()
+        z, pvalue = stats.ranksums(tmp[cyVar].loc[tmp[outcomeVar] == 1], tmp[cyVar].loc[tmp[outcomeVar] == 0])
+        annParams = dict(textcoords='offset points', xytext=(0,-5), ha='center', va='top', color='black', weight='bold', size='medium')
+        plt.annotate('p = %1.3g' % pvalue, xy=(0.5,plt.ylim()[1]), **annParams)
     plt.show()
 
 def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
@@ -406,7 +413,7 @@ def plotHierClust(dmatDf, Z, labels=None, titleStr=None, vRange=None, tickSz='sm
         vmin,vmax = vRange
     
     if cmap is None:
-        if vmin < 0 and vmax > 0 and vmax < 1 and vmin > -1:
+        if vmin < 0 and vmax > 0 and vmax <= 1 and vmin >= -1:
             cmap = cm.RdBu_r
         else:
             cmap = cm.YlOrRd
