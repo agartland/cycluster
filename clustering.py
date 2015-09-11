@@ -5,7 +5,7 @@ from gapstat import computeGapStat
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 import numpy as np
 import pandas as pd
-
+from sklearn.decomposition import KernelPCA, PCA
 from sklearn.mixture import GMM, DPGMM
 from comparison import _alignClusterMats, alignClusters
 
@@ -106,44 +106,33 @@ def makeModuleVariables(cyDf, labels, dropped = None):
     out = out.dropna(axis = 1, how = 'all')
     return out
 
-def gmmClusterFunc(cyDf, K = 6):
-    """Soft clustering in high-dimensions (TODO: with constraints)"""
-    """Use Gaussian Mixture Models to cluster"""
+def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
+    """Use Gaussian Mixture Models to cluster
+    The probabilities seem too high.
+    Check convergence diagnostics.
+    Try to plot the cluster density in 2D."""
+
+    dmatDf = dmatFunc(cyDf)
 
     """First establish that with these parameters we get the same result everytime using the same data"""
-    gmmParams = dict(n_components = K, n_init = 100, n_iter = 100, thresh = 1e-6)
+    gmmParams = dict(n_components = K, n_init = 100, n_iter = 100, tol = 1e-6)
     g = GMM(**gmmParams)
-    compTmp = fillMissing(cyDf)
 
-    nreps = 20
-    for i in range(nreps):
-        g.fit(compTmp.T)
-        tmppred = g.predict_proba(compTmp.T)
+    """First, reduce the dimensionality of the data (KPCA also solves the missing data problem by using pairwise corr)"""
+    pca = KernelPCA(kernel='precomputed', n_components=n_components)
+    gram = 1 - (dmatDf.values / dmatDf.values.max())
+    xy = pca.fit_transform(gram)
+    redDf = pd.DataFrame(xy, index=dmatDf.index, columns=range(n_components))
 
-        if i > 0:
-            apred = _alignClusterMats(pred1,tmppred)
-            pred += apred
-            print (apred != pred1).sum()
-        else:
-            pred1 = tmppred
-            pred = tmppred
-    pred = pred/nreps
-    print np.round(pred,3)
+    g.fit(redDf.values)
+    prob = g.predict_proba(redDf.values)
 
-    """Now repeat 20 times, each with missing data filled stochastically"""
-    g = GMM(**gmmParams)
-    pred = np.zeros((dmatDf.columns.shape[0],K))
-    for i in range(nreps):
-        compTmp = fillMissing(cyDf)
-        g.fit(compTmp.T)
-        tmppred = g.predict_proba(compTmp.T)
-        if i > 0:
-            apred = _alignClusterMats(pred1,tmppred)
-            pred += apred
-        else:
-            pred1 = tmppred
-            pred = tmppred
-    pred = pred/nreps
+    """Each cytokine is assigned to the ML cluster, but is dropped if Pr < minInclusion"""
+    probDf = pd.DataFrame(prob,index=cyDf.columns, columns=range(K))
+    labels = pd.Series(np.argmax(prob, axis=1), index=cyDf.columns)
+    dropped = pd.Series(np.max(prob, axis=1) < minInclusionProb, index=cyDf.columns)
+
+    return probDf, labels, dropped
 
 class cyclusterClass(object):
     def __init__(self, studyStr, sampleStr, normed, cyDf, compCommS):
@@ -163,9 +152,20 @@ class cyclusterClass(object):
         _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat = True)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
+    def gmmClusterCytokines(self, alignLabels=None, minInclusionProb=0.8, K=6, n_components=4):
+        self.probDf, self.labels, self.dropped = gmmClusterFunc(self.cyDf, corrDmatFunc, minInclusionProb, K, n_components)
+        if not alignLabels is None:
+            self.labels = alignClusters(alignLabels, self.labels)
+        self.modS = labels2modules(self.labels, dropped = self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
+        self.dmatDf = corrDmatFunc(self.cyDf)
+
     @property
     def name(self):
         return '%s_%s_%s_' % (self.studyStr, self.sampleStr, 'normed' if self.normed else 'raw')
     @property
     def withMean(self):
         return self.cyDf.join(self.compCommS)
+    @property
+    def modWithMean(self):
+        return self.modDf.join(self.compCommS)
