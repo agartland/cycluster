@@ -237,6 +237,7 @@ def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True):
 
 def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
     """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework."""
+    cyDf = cyDf.dropna()
     cv = sklearn.cross_validation.KFold(n=cyDf.shape[0], n_folds=n_folds, shuffle=True, random_state=110820)
 
     plt.clf()
@@ -263,6 +264,7 @@ def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
             mean_tpr[0], mean_tpr[-1] = 0,1
             plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvar, mean_auc))
         else:
+            print 'ROC: did not finish all folds (%d of %d)' % (counter, n_folds)
             plt.plot([0, 1], [0, 1], lw=2, label='%s (AUC = %0.2f)' % (cvar, 0.5))
 
 
