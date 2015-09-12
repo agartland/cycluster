@@ -255,13 +255,16 @@ def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
                 fpr, tpr, thresholds = sklearn.metrics.roc_curve(testDf[outcomeVar].values, outcomePred)
                 mean_tpr += np.interp(mean_fpr, fpr, tpr)
                 counter += 1
-            except sm.tools.sm_exceptions.PerfectSeparationError:
+            except (ValueError, sm.tools.sm_exceptions.PerfectSeparationError):
                 print 'PerfectSeparationError: %s, %s (skipping this train/test split)' % (cvar,outcomeVar)
-            
-        mean_tpr /= counter
-        mean_auc = sklearn.metrics.auc(mean_fpr, mean_tpr)
-        mean_tpr[0], mean_tpr[-1] = 0,1
-        plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvar, mean_auc))
+        if counter == n_folds:
+            mean_tpr /= counter
+            mean_auc = sklearn.metrics.auc(mean_fpr, mean_tpr)
+            mean_tpr[0], mean_tpr[-1] = 0,1
+            plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvar, mean_auc))
+        else:
+            plt.plot([0, 1], [0, 1], lw=2, label='%s (AUC = %0.2f)' % (cvar, 0.5))
+
 
     plt.plot([0, 1], [0, 1], '--', color='gray', label='Luck')
 
