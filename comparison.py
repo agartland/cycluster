@@ -12,8 +12,10 @@ __all__ = ['compareClusters',
            'alignClusters',
            'crossCompartmentCorr']
 
-def compareClusters(labelsA, labelsB, method = 'ARI', alignFirst = True):
+def compareClusters(labelsA, labelsB, method='ARI', alignFirst=True, useCommon=False):
     """Requre that labelsA and labelsB have the same index"""
+    if useCommon:
+        labelsA, labelsB = labelsA.align(labelsB, join='inner')
     assert len(labelsA.index) == len(labelsB.index)
     assert (labelsA.index == labelsB.index).sum() == len(labelsA.index)
     uLabels = np.unique(labelsA)
@@ -39,7 +41,9 @@ def compareClusters(labelsA, labelsB, method = 'ARI', alignFirst = True):
 
     return s
 
-def plotClusterOverlap(labelsA, labelsB):
+def plotClusterOverlap(labelsA, labelsB, useCommon=False):
+    if useCommon:
+        labelsA, labelsB = labelsA.align(labelsB, join='inner')
     def _thickness(labelsA, labelsB, a, b):
         indA = labelsA == a
         indB = labelsB == b
