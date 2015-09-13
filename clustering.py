@@ -160,6 +160,13 @@ class cyclusterClass(object):
         self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
+    def printModules(self):
+        for m in self.modS.keys():
+            print 'M%d' % m
+            for c in sorted(self.modS[m]):
+                print c
+            print
+
     @property
     def name(self):
         return '%s_%s_%s_' % (self.studyStr, self.sampleStr, 'normed' if self.normed else 'raw')
