@@ -32,6 +32,7 @@ __all__ = ['plotModuleEmbedding',
            'plotInterModuleCorr',
            'cyBoxPlots',
            'logisticRegressionBars',
+           'logisticRegressionResults',
            'plotMeanCorr',
            'outcomeBoxplot',
            'plotROC',
@@ -130,9 +131,32 @@ def cyBoxPlots(cyDf, basefile, vRange=None,):
         plt.title('Cytokines (page %d)' % (i+1))
         figh.savefig('%s_%02d.png' % (basefile,i))
 
+def logisticRegressionResults(df, outcome, predictors, adj = []):
+    k = len(predictors)
+    assoc = np.zeros((k,6))
+    for i,predc in enumerate(predictors):
+        tmp = df[[outcome, predc] + adj].dropna()
+        model = sm.GLM(endog = tmp[outcome].astype(float), exog = sm.add_constant(tmp[[predc] + adj].astype(float)), family = sm.families.Binomial())
+        try:
+            res = model.fit()
+            assoc[i, 0] = np.exp(res.params[predc])
+            assoc[i, 3] = res.pvalues[predc]
+            assoc[i, 1:3] = np.exp(res.conf_int().loc[predc])
+        except sm.tools.sm_exceptions.PerfectSeparationError:
+            assoc[i, 0] = 0
+            assoc[i, 3] = 0
+            assoc[i, 1:3] = [0,0]
+            print 'PerfectSeparationError: %s' % predc
+
+        #z, pvalue = stats.ranksums(tmp[predc].loc[tmp[outcome] == 1], tmp[predc].loc[tmp[outcome] == 0])
+        #assoc[i, 4] = z
+        #assoc[i, 5] = pvalue
+    outDf = pd.DataFrame(assoc[:,:4], index=predictors, columns=['Odds','LL','UL','pvalue'])
+    return outDf
+
 def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, sigThreshold = 0.05, printPQ = False):
     """Forest plot of each predictor association with binary outcome."""
-    """OR, LL, UL, p, ranksum-Z, p"""
+    """Odds, LL, UL, p, ranksum-Z, p"""
     k = len(predictors)
     assoc = np.zeros((k,6))
     for i,predc in enumerate(predictors):

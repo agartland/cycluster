@@ -161,9 +161,12 @@ class cyclusterClass(object):
         self.dmatDf = corrDmatFunc(self.cyDf)
 
     def printModules(self):
-        for m in self.modS.keys():
+        tmp = labels2modules(self.labels, dropped = None)
+        for m in tmp.keys():
             print 'M%d' % m
-            for c in sorted(self.modS[m]):
+            for c in sorted(tmp[m]):
+                if self.dropped[c]:
+                    print '*',
                 print c
             print
 
