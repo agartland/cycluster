@@ -38,9 +38,29 @@ def meanSubNormalize(cyDf, cyVars = None, compCommVars = None, meanVar = None):
     ndf.loc[:, meanVar] = muVec
     return ndf
 
-def partialCorrNormalize(cyDf, cyVars = None, compCommVars = None, meanVar = None):
+def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     """Computes residuals in-place after regressing each cytokine on the mean cytokine level
-    Correlations among residuals are partial correlations, adjusting for meanVar"""
+    Correlations among residuals are partial correlations, adjusting for meanVar
+
+    Parameters
+    ----------
+    cyDf : pd.DataFrame
+        Log-transformed cytokine data with cytokine columns and rows per patient/timepoint
+    cyVars : list
+        Cytokine columns in cyDf that will be normalized and included in the returned df
+        (default: all columns in cyDf)
+    compCommVars : list
+        Cytokine columns used for computing the mean level for each row.
+        (default: all columns in cyDf)
+    meanVar : str
+        Name of the cytokine mean column added to the df
+        (default: "compComm")
+
+    Returns
+    -------
+    nCyDf : pd.DataFrame
+        Residuals after regressing each cyVar on the mean cytokine level for each row."""
+
     def _meanCorrResiduals(colVec):
         model = sm.GLM(endog = colVec, exog = sm.add_constant(muVec), missing = 'drop')
         result = model.fit()
@@ -53,7 +73,8 @@ def partialCorrNormalize(cyDf, cyVars = None, compCommVars = None, meanVar = Non
     if compCommVars is None:
         cyDf.columns
 
-    """Standardize each cytokine before taking the mean"""
+    """Standardize each cytokine before taking the mean.
+    Ensures equal "weighting" between cytokines when computing the mean level."""
     muVec = cyDf[compCommVars].apply(lambda cy: (cy - cy.mean()) / cy.std(), axis = 0).mean(axis=1)
     
     ndf = cyDf.copy()
@@ -153,7 +174,7 @@ def tranformCytokines(cyDf, maskDf = None, performLog = True, halfLOD = True, di
 
     if performLog:
         """Take the log of all cytokine concentrations"""
-        cyDf = np.log(cyDf)
+        cyDf = np.log10(cyDf)
     if discardCensored:
         """Force censored values to be Nan"""
         tmpView = cyDf.values

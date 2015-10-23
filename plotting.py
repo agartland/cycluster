@@ -78,7 +78,7 @@ def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=
         axh.scatter(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]], marker='o', s=100, alpha=alpha, c=col)
     plt.draw()
 
-def plotModuleCorr(cyDf, labels, plotLabel, dropped = None, compCommVar = None):
+def plotModuleCorr(cyDf, labels, plotLabel, dropped=None, compCommVar=None):
     """Make a corr plot for a module."""
     modDf = makeModuleVariables(cyDf[labels.index], labels, dropped = dropped)
     modVar = 'M%s' % plotLabel
@@ -88,7 +88,8 @@ def plotModuleCorr(cyDf, labels, plotLabel, dropped = None, compCommVar = None):
     tmpDf = cyDf[cyVars].join(modDf[modVar]).copy()
 
     """Rename dropped columns with an asterisk but leave them on the plot"""
-    tmpDf.columns = np.array([c + '*' if c in dropped and dropped[c] else c for c in tmpDf.columns])
+    if not dropped is None:
+        tmpDf.columns = np.array([c + '*' if c in dropped and dropped[c] else c for c in tmpDf.columns])
 
     figh = plt.gcf()
     figh.clf()
@@ -131,32 +132,37 @@ def cyBoxPlots(cyDf, basefile, vRange=None,):
         plt.title('Cytokines (page %d)' % (i+1))
         figh.savefig('%s_%02d.png' % (basefile,i))
 
-def logisticRegressionResults(df, outcome, predictors, adj = []):
+def logisticRegressionResults(df, outcome, predictors, adj=[]):
     k = len(predictors)
     assoc = np.zeros((k,6))
+    params = []
+    pvalues = []
     for i,predc in enumerate(predictors):
         tmp = df[[outcome, predc] + adj].dropna()
-        model = sm.GLM(endog = tmp[outcome].astype(float), exog = sm.add_constant(tmp[[predc] + adj].astype(float)), family = sm.families.Binomial())
+        exogVars = list(set([predc] + adj))
+        model = sm.GLM(endog=tmp[outcome].astype(float), exog=sm.add_constant(tmp[exogVars].astype(float)), family=sm.families.Binomial())
         try:
             res = model.fit()
             assoc[i, 0] = np.exp(res.params[predc])
             assoc[i, 3] = res.pvalues[predc]
             assoc[i, 1:3] = np.exp(res.conf_int().loc[predc])
+            params.append(res.params.to_dict())
+            pvalues.append(res.pvalues.to_dict())
         except sm.tools.sm_exceptions.PerfectSeparationError:
-            assoc[i, 0] = 0
+            assoc[i, 0] = np.nan
             assoc[i, 3] = 0
-            assoc[i, 1:3] = [0,0]
-            print 'PerfectSeparationError: %s' % predc
-
-        #z, pvalue = stats.ranksums(tmp[predc].loc[tmp[outcome] == 1], tmp[predc].loc[tmp[outcome] == 0])
-        #assoc[i, 4] = z
-        #assoc[i, 5] = pvalue
-    outDf = pd.DataFrame(assoc[:,:4], index=predictors, columns=['Odds','LL','UL','pvalue'])
+            assoc[i, 1:3] = [np.nan, np.nan]
+            params.append({k:np.nan for k in [predc] + adj})
+            pvalues.append({k:np.nan for k in [predc] + adj})
+            print 'PerfectSeparationError: %s with %s' % (predc, outcome)
+    outDf = pd.DataFrame(assoc[:,:4], index=predictors, columns=['OR','LL','UL','pvalue'])
+    outDf['params'] = params
+    outDf['pvalues']= pvalues
     return outDf
 
 def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, sigThreshold = 0.05, printPQ = False):
     """Forest plot of each predictor association with binary outcome."""
-    """Odds, LL, UL, p, ranksum-Z, p"""
+    """OR, LL, UL, p, ranksum-Z, p"""
     k = len(predictors)
     assoc = np.zeros((k,6))
     for i,predc in enumerate(predictors):
@@ -245,10 +251,10 @@ def plotMeanCorr(df, meanVar):
     plt.xlim((0,1))
     plt.tight_layout()
 
-def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True):
-    figh = plt.gcf()
-    plt.clf()
-    axh = plt.subplot(111)
+def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True, axh=None):
+    if axh is None:
+        axh = plt.gca()
+    axh.cla()
     sns.boxplot(y = cyVar, x = outcomeVar, data = cyDf, ax = axh, order  = [0,1])
     sns.stripplot(y = cyVar, x = outcomeVar, data = cyDf, jitter = True, ax = axh, order  = [0,1])
     plt.xticks([0,1], ['False', 'True'])
