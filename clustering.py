@@ -8,6 +8,7 @@ import pandas as pd
 from sklearn.decomposition import KernelPCA, PCA
 from sklearn.mixture import GMM, DPGMM
 from comparison import _alignClusterMats, alignClusters
+from preprocessing import partialCorrNormalize
 
 __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
@@ -70,7 +71,8 @@ def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps = 500, threshol
             meanReliability = (1 - pwrelDf[cy].loc[cyMembers].drop(cy).mean())
             if  meanReliability < threshold:
                 dropped[cy] = True
-                print 'Excluded %s from cluster %s: mean reliability was %1.1f%%' % (cy, currLab, 100 * meanReliability)
+                strTuple = (cy, cyDf.sampleStr, 'N' if cyDf.normed else '', currLab, 100 * meanReliability)
+                print 'Excluded %s from cluster %s %sM%s: mean reliability was %1.1f%%' % strTuple
         
         """Consider step-up strategy: start with best and add those that fit"""
     return pwrelDf, labels, dropped
@@ -88,15 +90,34 @@ def labels2modules(labels, dropped = None):
     return out
 
 def makeModuleVariables(cyDf, labels, dropped = None):
-    """Define variable for each module by standardizing all the cytokines in the module and taking the mean"""
+    """Define variable for each module by standardizing all the cytokines in the
+    module and taking the mean. Can be applied to a stacked df with multiple timepoints.
+    Standardization will be performed across all data.
+    Each module is also standardized.
+
+    Parameters
+    ----------
+    cyDf : pd.DataFrame [n x cytokines]
+        Contains columns for making the module.
+        May include additional columns than included in labels or dropped.
+    labels : pd.Series [index: cytokines]
+        Series indicating cluster labels with index containing cytokine vars in cyDf
+    dropped : pd.Series [index: cytokines]
+        Series indicating if a cytokine (index) should be dropped when making the module
+
+    Returns
+    -------
+    out : pd.DataFrame [n x modules]
+        Modules as columns, one row for every row in cyDf"""
+
     if dropped is None:
         dropped = pd.Series(np.zeros((labels.shape[0]), dtype = bool), index = labels.index)
     standardizeFunc = lambda col: (col - np.nanmean(col))/np.nanstd(col)
     out = None
     uLabels = np.unique(labels)
     for lab in uLabels:
-        ind = (labels == lab) & (~dropped)
-        tmpS = cyDf.loc[:,ind].apply(standardizeFunc, raw = True).mean(axis = 1, skipna=True)
+        members = labels.index[(labels == lab) & (~dropped)]
+        tmpS = cyDf.loc[:,members].apply(standardizeFunc, raw = True).mean(axis = 1, skipna=True)
         tmpS.name = 'M%s' % lab
         if out is None:
             out = pd.DataFrame(tmpS)
@@ -104,6 +125,7 @@ def makeModuleVariables(cyDf, labels, dropped = None):
             out = out.join(tmpS)
     """Drop clusters that don't have any members"""
     out = out.dropna(axis = 1, how = 'all')
+    out = out.apply(standardizeFunc)
     return out
 
 def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
@@ -135,20 +157,34 @@ def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
     return probDf, labels, dropped
 
 class cyclusterClass(object):
-    def __init__(self, studyStr, sampleStr, normed, cyDf, compCommS):
+    def __init__(self, studyStr, sampleStr, normed, rCyDf, compCommVars=None):
         self.studyStr = studyStr
         self.sampleStr = sampleStr
         self.normed = normed
-        self.cyDf = cyDf
-        self.compCommS = compCommS
-        self.cyVars = cyDf.columns.tolist()
+        self.cyVars = rCyDf.columns.tolist()
+        self.rCyDf = rCyDf.copy()
+
+        self.nCyDf = partialCorrNormalize(rCyDf, compCommVars=compCommVars, meanVar='compComm')
+        self.compCommS = self.nCyDf['compComm']
+        self.nCyDf = self.nCyDf[self.cyVars]
+        if normed:
+            self.cyDf = self.nCyDf
+        else:
+            self.cyDf = self.rCyDf
+        
+        self.cyDf.sampleStr = sampleStr
+        self.cyDf.normed = normed
 
     def clusterCytokines(self, alignLabels=None):
-        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, hierClusterFunc)
+        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, hierClusterFunc, threshold=0)
         if not alignLabels is None:
             self.labels = alignClusters(alignLabels, self.labels)
         self.modS = labels2modules(self.labels, dropped = self.dropped)
         self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
+        if self.normed:
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped = self.dropped)
+        else:
+            self.rModDf = self.modDf
         _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat = True)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
@@ -160,15 +196,43 @@ class cyclusterClass(object):
         self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
-    def printModules(self):
-        tmp = labels2modules(self.labels, dropped = None)
+    def printModules(self, modules=None):
+        tmp = labels2modules(self.labels, dropped=None)
         for m in tmp.keys():
-            print 'M%d' % m
-            for c in sorted(tmp[m]):
-                if self.dropped[c]:
-                    print '*',
-                print c
-            print
+            mStr = 'M%d' % m
+            if modules is None or mStr == modules or mStr in modules:
+                print mStr
+                for c in sorted(tmp[m]):
+                    if self.dropped[c]:
+                        print '*',
+                    print c
+                print
+    def modMembers(modStr):
+        return self.modS[int(modStr[-1])]
+    def meanICD(self, dmat='dmat', dropped=None):
+        """Compute mean intra-cluster distance using either dmatDf or pwrel"""
+        def _micd(df, labels):
+            """Should this be weighted by the size of each cluster? Yes."""
+            count = 0
+            tot = 0
+            for lab in np.unique(labels):
+                members = labels.index[labels == lab]
+                tmp = df[members].loc[members].values.flatten()
+                count += len(tmp)
+                tot += tmp.sum()
+            return tot/count
+        
+        if dropped is None:
+            tmpLabels = labels
+        else:
+            tmpLabels = labels.loc[~self.dropped]
+
+        if dmat == 'dmat':
+            return _micd(self.dmatDf, self.tmpLabels)
+        elif dmat == 'pwrel':
+            return _micd(self.pwrel, self.tmpLabels)
+        else:
+            raise IndexError('Value for dmat not understood (%s)' % dmat)
 
     @property
     def name(self):
