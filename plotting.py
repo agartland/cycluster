@@ -265,37 +265,39 @@ def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True, axh=None):
         plt.annotate('p = %1.3g' % pvalue, xy=(0.5,plt.ylim()[1]), **annParams)
     plt.show()
 
-def plotROC(cyDf, cyVars, outcomeVar, n_folds=5):
+def plotROC(cyDf, cyVarList, outcomeVar, n_folds=5):
     """Predict outcome with each cyVar and plot ROC for each, in a cross validation framework."""
     cyDf = cyDf.dropna()
     cv = sklearn.cross_validation.KFold(n=cyDf.shape[0], n_folds=n_folds, shuffle=True, random_state=110820)
 
     plt.clf()
-    for cvar in cyVars:
+    for cvars in cyVarList:
+        cvarStr = ' + '.join(cvars)
         mean_fpr = np.linspace(0, 1, 100)
         mean_tpr = np.zeros(mean_fpr.shape[0])
         all_tpr = []
         counter = 0
         for i, (trainInd, testInd) in enumerate(cv):
-            trainDf = cyDf[[outcomeVar, cvar]].iloc[trainInd]
-            testDf = cyDf[[outcomeVar, cvar]].iloc[testInd]
-            model = sm.GLM(endog = trainDf[outcomeVar].astype(float), exog = sm.add_constant(trainDf[cvar]), family = sm.families.Binomial())
+            trainDf = cyDf[[outcomeVar] + cvars].iloc[trainInd]
+            testDf = cyDf[[outcomeVar] + cvars].iloc[testInd]
+            
+            model = sm.GLM(endog = trainDf[outcomeVar].astype(float), exog = sm.add_constant(trainDf[cvars]), family = sm.families.Binomial())
             try:
-                outcomePred = model.fit().predict(sm.add_constant(testDf[cvar]))
+                outcomePred = model.fit().predict(sm.add_constant(testDf[cvars]))
                 
                 fpr, tpr, thresholds = sklearn.metrics.roc_curve(testDf[outcomeVar].values, outcomePred)
                 mean_tpr += np.interp(mean_fpr, fpr, tpr)
                 counter += 1
             except (ValueError, sm.tools.sm_exceptions.PerfectSeparationError):
-                print 'PerfectSeparationError: %s, %s (skipping this train/test split)' % (cvar,outcomeVar)
+                print 'PerfectSeparationError: %s, %s (skipping this train/test split)' % (cvarStr,outcomeVar)
         if counter == n_folds:
             mean_tpr /= counter
             mean_auc = sklearn.metrics.auc(mean_fpr, mean_tpr)
             mean_tpr[0], mean_tpr[-1] = 0,1
-            plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvar, mean_auc))
+            plt.plot(mean_fpr, mean_tpr, lw=2, label='%s (AUC = %0.2f)' % (cvarStr, mean_auc))
         else:
             print 'ROC: did not finish all folds (%d of %d)' % (counter, n_folds)
-            plt.plot([0, 1], [0, 1], lw=2, label='%s (AUC = %0.2f)' % (cvar, 0.5))
+            plt.plot([0, 1], [0, 1], lw=2, label='%s (AUC = %0.2f)' % (cvarStr, 0.5))
 
 
     plt.plot([0, 1], [0, 1], '--', color='gray', label='Luck')
