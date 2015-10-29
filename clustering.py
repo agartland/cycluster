@@ -207,7 +207,7 @@ class cyclusterClass(object):
                         print '*',
                     print c
                 print
-    def modMembers(modStr):
+    def modMembers(self,modStr):
         return self.modS[int(modStr[-1])]
     def meanICD(self, dmat='dmat', dropped=None):
         """Compute mean intra-cluster distance using either dmatDf or pwrel"""

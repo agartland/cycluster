@@ -41,9 +41,7 @@ __all__ = ['plotModuleEmbedding',
 def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1]):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     uLabels = np.unique(labels).tolist()
-
     n_components = max(plotDims) + 1
-
     dmat = dmatDf.values
     
     if method == 'kpca':
@@ -280,7 +278,7 @@ def plotROC(cyDf, cyVarList, outcomeVar, n_folds=5):
         for i, (trainInd, testInd) in enumerate(cv):
             trainDf = cyDf[[outcomeVar] + cvars].iloc[trainInd]
             testDf = cyDf[[outcomeVar] + cvars].iloc[testInd]
-            
+
             model = sm.GLM(endog = trainDf[outcomeVar].astype(float), exog = sm.add_constant(trainDf[cvars]), family = sm.families.Binomial())
             try:
                 outcomePred = model.fit().predict(sm.add_constant(testDf[cvars]))
