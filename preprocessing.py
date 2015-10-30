@@ -59,11 +59,17 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     Returns
     -------
     nCyDf : pd.DataFrame
-        Residuals after regressing each cyVar on the mean cytokine level for each row."""
+        Residuals after regressing each cyVar on the mean cytokine level for each row.
+    models : pd.Series
+        Result object from the regression for each cytokine (index), that can be used
+        to normalize additional timepoints."""
 
-    def _meanCorrResiduals(colVec):
-        model = sm.GLM(endog = colVec, exog = sm.add_constant(muVec), missing = 'drop')
+    def _meanCorrModel(colVec):
+        model = sm.GLM(endog=colVec, exog=sm.add_constant(muVec), missing='drop')
         result = model.fit()
+        return result
+    def _meanCorrResiduals(colVec):
+        result = _meanCorrModel(colVec)
         return colVec - result.predict(sm.add_constant(muVec))
 
     if cyVars is None:
@@ -75,12 +81,14 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
 
     """Standardize each cytokine before taking the mean.
     Ensures equal "weighting" between cytokines when computing the mean level."""
-    muVec = cyDf[compCommVars].apply(lambda cy: (cy - cy.mean()) / cy.std(), axis = 0).mean(axis=1)
+    muVec = cyDf[compCommVars].apply(lambda cy: (cy - cy.mean()) / cy.std(), axis=0).mean(axis=1)
     
+    models = cyDf.loc[:,cyVars].apply(_meanCorrModel, axis=0)
+
     ndf = cyDf.copy()
-    ndf.loc[:,cyVars] = ndf.loc[:,cyVars].apply(_meanCorrResiduals, axis = 0)
+    ndf.loc[:,cyVars] = ndf.loc[:,cyVars].apply(_meanCorrResiduals, axis=0)
     ndf.loc[:, meanVar] = muVec
-    return ndf
+    return ndf, models
 
 def fillMissing(df):
     """Drop rows (PTIDs) that have fewer than 90% of their cytokines"""

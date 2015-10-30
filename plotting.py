@@ -224,29 +224,67 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
     #plt.tight_layout()
     plt.show()
 
-def plotMeanCorr(df, meanVar):
+def plotMeanCorr(df, meanVar, cyList=None, sort=False, method='pearson'):
     """Plot of each cytokine's correlation with the mean."""
-    cyList = [c for c in df.columns if not c == meanVar]
+    if cyList is None:
+        cyList = [c for c in df.columns if not c == meanVar]
 
     tmpCorr = np.zeros((len(cyList),2))
     for i,s in enumerate(cyList):
-        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(df[s], df[meanVar], method = 'pearson')
-    sorti = np.argsort(tmpCorr[:,0])
+        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(df[s], df[meanVar], method=method)
+    if sort:
+        sorti = np.argsort(tmpCorr[:,0])
+    else:
+        sorti = np.arange(len(cyList))
     tmpCorr = tmpCorr[sorti,:]
 
     """Use q-value significance threshold"""
-    sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha = 0.2, method = 'fdr_bh')
+    #sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha=0.2, method='fdr_bh')
     """Use p-value significance threshold"""
     sigInd = tmpCorr[:,1] < 0.05
 
     plt.clf()
-    plt.barh(np.arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0]**2, color = 'black', align='center')
-    plt.barh(np.arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0]**2, color = 'red', align='center')
+    plt.barh(np.arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0], color = 'black', align='center')
+    plt.barh(np.arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0], color = 'red', align='center')
     plt.yticks(range(tmpCorr.shape[0]), np.array(cyList)[sorti])
     plt.grid(True, axis = 'x')
-    plt.xlabel('Correlation between\ncytokines and the "complete-common" mean ($^*R^2$)')
+    plt.xlabel('Correlation between\ncytokines and the "complete-common" mean ($\\rho$)')
+    plot([0,0],[-1,tmpCorr.shape[0]],'k-',lw=1)
     plt.ylim((-1, tmpCorr.shape[0]))
-    plt.xlim((0,1))
+    plt.xlim((-1,1))
+    plt.tight_layout()
+
+def plotCrossCorr(adf, bdf, cyList=None, sort=False, method='pearson'):
+    """Plot of each cytokine's correlation across two compartments."""
+    if cyList is None:
+        cyList = [c for c in adf.columns if c in bdf.columns]
+
+    df = pd.merge(adf, bdf, how='inner', left_index=True, right_index=True, suffixes=('_a','_b'))
+
+    tmpCorr = np.zeros((len(cyList),2))
+    for i,s in enumerate(cyList):
+        tmp = df[[s+'_a', s+'_b']].dropna()
+        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(tmp[s+'_a'], tmp[s+'_b'], method=method)
+    if sort:
+        sorti = np.argsort(tmpCorr[:,0])
+    else:
+        sorti = np.arange(len(cyList))
+    tmpCorr = tmpCorr[sorti,:]
+
+    """Use q-value significance threshold"""
+    #sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha= 0.2, method='fdr_bh')
+    """Use p-value significance threshold"""
+    sigInd = tmpCorr[:,1] < 0.05
+
+    plt.clf()
+    plt.barh(np.arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0], color='black', align='center')
+    plt.barh(np.arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0], color='red', align='center')
+    plt.yticks(range(tmpCorr.shape[0]), np.array(cyList)[sorti])
+    plt.grid(True, axis='x')
+    plt.xlabel('Correlation between cytokines\nacross compartments ($\\rho$)')
+    plot([0,0],[-1,tmpCorr.shape[0]],'k-',lw=1)
+    plt.ylim((-1, tmpCorr.shape[0]))
+    plt.xlim((-1,1))
     plt.tight_layout()
 
 def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True, axh=None):

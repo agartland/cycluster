@@ -123,8 +123,6 @@ def makeModuleVariables(cyDf, labels, dropped = None):
             out = pd.DataFrame(tmpS)
         else:
             out = out.join(tmpS)
-    """Drop clusters that don't have any members"""
-    out = out.dropna(axis = 1, how = 'all')
     out = out.apply(standardizeFunc)
     return out
 
@@ -164,7 +162,7 @@ class cyclusterClass(object):
         self.cyVars = rCyDf.columns.tolist()
         self.rCyDf = rCyDf.copy()
 
-        self.nCyDf = partialCorrNormalize(rCyDf, compCommVars=compCommVars, meanVar='compComm')
+        self.nCyDf, self.normModels = partialCorrNormalize(rCyDf, compCommVars=compCommVars, meanVar='compComm')
         self.compCommS = self.nCyDf['compComm']
         self.nCyDf = self.nCyDf[self.cyVars]
         if normed:
