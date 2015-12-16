@@ -77,7 +77,7 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     if meanVar is None:
         meanVar = 'compComm'
     if compCommVars is None:
-        cyDf.columns
+        compCommVars = cyDf.columns
 
     """Standardize each cytokine before taking the mean.
     Ensures equal "weighting" between cytokines when computing the mean level."""

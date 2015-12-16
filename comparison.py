@@ -4,11 +4,10 @@ import matplotlib.pyplot as plt
 import itertools
 from sklearn import metrics
 import pandas as pd
-import statsmodels as sm
+import statsmodels.api as sm
 from corrplots import partialcorr
 
 __all__ = ['compareClusters',
-           'plotClusterOverlap',
            'alignClusters',
            'crossCompartmentCorr']
 
@@ -40,34 +39,6 @@ def compareClusters(labelsA, labelsB, method='ARI', alignFirst=True, useCommon=F
             s[labi] = (accA + accB) / 2
 
     return s
-
-def plotClusterOverlap(labelsA, labelsB, useCommon=False):
-    if useCommon:
-        labelsA, labelsB = labelsA.align(labelsB, join='inner')
-    def _thickness(labelsA, labelsB, a, b):
-        indA = labelsA == a
-        indB = labelsB == b
-        return 2 * (indA & indB).sum()/(indA.sum() + indB.sum())
-    
-    alignedB = alignClusters(labelsA, labelsB)
-    
-    yA = np.linspace(10,0,np.unique(labelsA).shape[0])
-    yB = np.linspace(10,0,np.unique(labelsB).shape[0])
-
-    axh = plt.gca()
-    axh.cla()
-    annParams = dict(ha = 'center', va = 'center', size = 'x-large', zorder = 15)
-    for ai, a in enumerate(np.unique(labelsA)):
-        axh.annotate(s = '%s' % a, xy = (0,yA[ai]), color = 'black', **annParams)
-        for bi, b in enumerate(np.unique(alignedB)):
-            if ai == 0:
-                axh.annotate(s = '%s' % b, xy = (1,yB[bi]), color = 'white', **annParams)
-            axh.plot([0,1], [yA[ai], yB[bi]], '-', lw = 20 * _thickness(labelsA, alignedB, a, b), color = 'black', alpha = 0.7, zorder = 5)
-
-    axh.scatter(np.zeros(np.unique(labelsA).shape[0]), yA, s = 1000, color = 'red', zorder = 10)
-    axh.scatter(np.ones(np.unique(alignedB).shape[0]), yB, s = 1000, color = 'blue', zorder = 10)
-    plt.axis('off')
-    plt.draw()
 
 def _alignClusterMats(matA, matB):
     """Returns a copy of matB with columns shuffled to maximize overlap with matA
@@ -133,29 +104,15 @@ def alignClusters(labelsA, labelsB):
     outLabelsB = _sparseDf2labels(_alignSparseDf(sparseA, sparseB))
     return outLabelsB
 
-def crossCompartmentCorr(dfA, dfB, method = 'pearson', useFDR = False, sigThreshold = 0.05):
-    """Plot of cytokine correlation for those that are common to both A and B"""
-    commonCy = [cy for cy in dfA.columns if cy in dfB.columns]
-    tmpCorr = np.zeros((len(commonCy),2))
-    for i,cy in enumerate(commonCy):
-        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(dfA[cy], dfB[cy], method = method)
+def crossCompartmentCorr(dfA, dfB, method='pearson'):
+    """Cytokine correlation for those that are common to both A and B"""
+    cyList = np.array([cy for cy in dfA.columns if cy in dfB.columns])
+    joinedDf = pd.merge(dfA[cyList], dfB[cyList], suffixes=('_A','_B'), left_index=True, right_index=True)
+    tmpCorr = np.zeros((len(cyList),3))
+    for i,cy in enumerate(cyList):
+        tmp = joinedDf[[cy + '_A',cy + '_B']].dropna()
+        tmpCorr[i,:2] = partialcorr(tmp[cy + '_A'], tmp[cy + '_B'], method=method)
     sorti = np.argsort(tmpCorr[:,0])
     tmpCorr = tmpCorr[sorti,:]
-
-    if useFDR:
-        """Use q-value significance threshold"""
-        sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha = sigThreshold, method = 'fdr_bh')
-    else:
-        """Use p-value significance threshold"""
-        sigInd = tmpCorr[:,1] < sigThreshold
-
-    axh = plt.gca()
-    axh.cla()
-    axh.barh(arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0]**2, color = 'black', align='center')
-    axh.barh(arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0]**2, color = 'red', align='center')
-    plt.yticks(range(tmpCorr.shape[0]), np.array([commonCy])[sorti])
-    plt.grid(True, axis = 'x')
-    plt.xlabel('Cross compartment correlation ($^*R^2$)')
-    plt.ylim((-1,tmpCorr.shape[0]))
-    plt.xlim((0,1))
-    tight_layout()
+    _, tmpCorr[:,2], _, _ = sm.stats.multipletests(tmpCorr[:,1], method='fdr_bh')
+    return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho','pvalue','qvalue'])

@@ -10,13 +10,17 @@ from sklearn.mixture import GMM, DPGMM
 from comparison import _alignClusterMats, alignClusters
 from preprocessing import partialCorrNormalize
 
+from corrplots import partialcorr
+import statsmodels.api as sm
+
 __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
            'corrDmatFunc',
            'makeModuleVariables',
            'formReliableClusters',
            'labels2modules',
-           'cyclusterClass']
+           'cyclusterClass',
+           'meanCorr']
 
 def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
     if dfunc is None:
@@ -154,6 +158,20 @@ def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
 
     return probDf, labels, dropped
 
+def meanCorr(cyDf, meanVar, cyList=None, method='pearson'):
+    """Plot of each cytokine's correlation with the mean."""
+    if cyList is None:
+        cyList = np.array([c for c in cyDf.columns if not c == meanVar])
+    cyList = np.asarray(cyList)
+
+    tmpCorr = np.zeros((len(cyList),3))
+    for i,s in enumerate(cyList):
+        tmpCorr[i,:2] = partialcorr(cyDf[s], cyDf[meanVar], method=method)
+    sorti = np.argsort(tmpCorr[:,0])
+    tmpCorr = tmpCorr[sorti,:]
+    _, tmpCorr[:,2], _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha=0.2, method='fdr_bh')
+    return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho','pvalue','qvalue'])
+
 class cyclusterClass(object):
     def __init__(self, studyStr, sampleStr, normed, rCyDf, compCommVars=None):
         self.studyStr = studyStr
@@ -173,8 +191,10 @@ class cyclusterClass(object):
         self.cyDf.sampleStr = sampleStr
         self.cyDf.normed = normed
 
-    def clusterCytokines(self, alignLabels=None):
+    def clusterCytokines(self, alignLabels=None, labelMap=None):
         self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, hierClusterFunc, threshold=0)
+        if not labelMap is None:
+            self.labels = self.labels.map(labelMap)
         if not alignLabels is None:
             self.labels = alignClusters(alignLabels, self.labels)
         self.modS = labels2modules(self.labels, dropped = self.dropped)

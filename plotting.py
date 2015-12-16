@@ -16,7 +16,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib import cm
 import scipy.cluster.hierarchy as sch
 
-from corrplots import validPairwiseCounts, partialcorr,combocorrplot
+from corrplots import validPairwiseCounts, partialcorr, combocorrplot, crosscorr, heatmap
 import statsmodels.api as sm
 from scipy import stats
 
@@ -25,7 +25,8 @@ import sklearn
 import seaborn as sns
 sns.set(style = 'darkgrid', palette = 'muted', font_scale = 1.75)
 
-from cycluster import labels2modules, makeModuleVariables
+from cycluster import labels2modules, makeModuleVariables, meanCorr
+from cycluster.comparison import *
 
 __all__ = ['plotModuleEmbedding',
            'plotModuleCorr',
@@ -36,7 +37,12 @@ __all__ = ['plotModuleEmbedding',
            'plotMeanCorr',
            'outcomeBoxplot',
            'plotROC',
-           'plotInterModuleCorr']
+           'plotInterModuleCorr'
+           'plotClusterOverlap',
+           'plotCrossCompartmentHeatmap',
+           'plotCrossCompartmentBoxplot',
+           'plotCrossCompartmentBars',
+           'plotHierClust']
 
 def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1]):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
@@ -107,28 +113,32 @@ def plotInterModuleCorr(cyDf, labels, dropped = None, compCommVar = None):
     figh.clf()
     combocorrplot(modDf[modVars], method = 'pearson')
 
-def cyBoxPlots(cyDf, basefile, vRange=None,):
+def cyBoxPlots(cyDf, ptidDf=None, hue=None, unLog=True):
     """Boxplots of cytokines sorted by median"""
-    def sortFunc(df, c):
-        tmp = df[c].dropna()
+    def sortFunc(cyDf, c):
+        tmp = cyDf[c].dropna()
         if tmp.shape[0] == 0:
             return 0
         else:
             return np.median(tmp)
-    
-    figh = plt.gcf()
-    k = 17
-    sortedCy = sorted(cyDf.columns, key = partial(sortFunc,cyDf), reverse = True)
-    n = len(sortedCy)
-    for i in np.arange(np.ceil(n/k)):
-        figh.clf()
-        axh = plt.subplot2grid((5,1), (0,0), rowspan = 4)
-        #axh.set_yscale('log')
-        #sns.violinplot(plotDf, order = sortedCy[int(i*k) : int(i*k+k)], ax = axh, alpha = 0.7, inner = 'points')
-        manyboxplots(cyDf, cols = sortedCy[int(i*k) : int(i*k+k)], axh = axh, alpha = 0.7, vRange = vRange, xRot = 90, violin = False)
-        plt.ylabel('Concentration (log-pg/mL)')
-        plt.title('Cytokines (page %d)' % (i+1))
-        figh.savefig('%s_%02d.png' % (basefile,i))
+    sortedCy = sorted(cyDf.columns, key=partial(sortFunc,cyDf), reverse=True)
+    plt.clf()
+    if ptidDf is None or hue is None:
+        sns.boxplot(cyDf, order=sortedCy)
+    else:
+        tmp = cyDf.stack().reset_index().set_index('PTID').join(ptidDf)
+        if set(ptidDf[hue].unique()) == set([0,1]):
+            tmp[hue] = tmp[hue].replace({1:'Yes',0:'No'})
+        sns.boxplot(x='level_1', y=0, data=tmp, hue=hue, order=sortedCy)
+
+    plt.xticks(rotation=90)
+    plt.xlabel('')
+    if unLog:
+        plt.ylabel('Analyte concentration (pg/mL)')
+        plt.yticks(np.arange(8)-1,['$10^{%d}$' % i for i in np.arange(8)-1])
+    else:
+        plt.ylabel('Analyte level (log-scale)')
+    plt.tight_layout()
 
 def logisticRegressionResults(df, outcome, predictors, adj=[]):
     k = len(predictors)
@@ -224,75 +234,94 @@ def logisticRegressionBars(df, outcome, predictors, adj = [], useFDR = False, si
     #plt.tight_layout()
     plt.show()
 
-def plotMeanCorr(df, meanVar, cyList=None, sort=False, method='pearson'):
+def plotMeanCorr(cyDf, meanVar, cyList=None, method='pearson'):
     """Plot of each cytokine's correlation with the mean."""
-    if cyList is None:
-        cyList = [c for c in df.columns if not c == meanVar]
-
-    tmpCorr = np.zeros((len(cyList),2))
-    for i,s in enumerate(cyList):
-        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(df[s], df[meanVar], method=method)
-    if sort:
-        sorti = np.argsort(tmpCorr[:,0])
-    else:
-        sorti = np.arange(len(cyList))
-    tmpCorr = tmpCorr[sorti,:]
-
-    """Use q-value significance threshold"""
-    #sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha=0.2, method='fdr_bh')
+    corrDf = meanCorr(cyDf, meanVar, cyList, method=method)
     """Use p-value significance threshold"""
-    sigInd = tmpCorr[:,1] < 0.05
-
+    sigInd = (corrDf.pvalue < 0.05).values
+    n = corrDf.shape[0]
     plt.clf()
-    plt.barh(np.arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0], color = 'black', align='center')
-    plt.barh(np.arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0], color = 'red', align='center')
-    plt.yticks(range(tmpCorr.shape[0]), np.array(cyList)[sorti])
-    plt.grid(True, axis = 'x')
+    plt.barh(np.arange(n)[~sigInd], corrDf.rho.loc[~sigInd], color='black', align='center')
+    plt.barh(np.arange(n)[sigInd], corrDf.rho.loc[sigInd], color='red', align='center')
+    plt.yticks(range(n), corrDf.index)
+    plt.grid(True, axis='x')
     plt.xlabel('Correlation between\ncytokines and the "complete-common" mean ($\\rho$)')
-    plot([0,0],[-1,tmpCorr.shape[0]],'k-',lw=1)
-    plt.ylim((-1, tmpCorr.shape[0]))
+    plt.plot([0,0],[-1,n],'k-',lw=1)
+    plt.ylim((-1, n))
     plt.xlim((-1,1))
     plt.tight_layout()
 
-def plotCrossCorr(adf, bdf, cyList=None, sort=False, method='pearson'):
-    """Plot of each cytokine's correlation across two compartments."""
-    if cyList is None:
-        cyList = [c for c in adf.columns if c in bdf.columns]
-
-    df = pd.merge(adf, bdf, how='inner', left_index=True, right_index=True, suffixes=('_a','_b'))
-
-    tmpCorr = np.zeros((len(cyList),2))
-    for i,s in enumerate(cyList):
-        tmp = df[[s+'_a', s+'_b']].dropna()
-        tmpCorr[i,0], tmpCorr[i,1] = partialcorr(tmp[s+'_a'], tmp[s+'_b'], method=method)
-    if sort:
-        sorti = np.argsort(tmpCorr[:,0])
-    else:
-        sorti = np.arange(len(cyList))
-    tmpCorr = tmpCorr[sorti,:]
-
-    """Use q-value significance threshold"""
-    #sigInd, qvalues, _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha= 0.2, method='fdr_bh')
-    """Use p-value significance threshold"""
-    sigInd = tmpCorr[:,1] < 0.05
-
-    plt.clf()
-    plt.barh(np.arange(tmpCorr.shape[0])[~sigInd], tmpCorr[~sigInd,0], color='black', align='center')
-    plt.barh(np.arange(tmpCorr.shape[0])[sigInd], tmpCorr[sigInd,0], color='red', align='center')
-    plt.yticks(range(tmpCorr.shape[0]), np.array(cyList)[sorti])
+def plotCrossCompartmentBars(cyDfA, cyDfB, method='pearson'):
+    corrDf = crossCompartmentCorr(cyDfA, cyDfB, method=method)
+    ncy = corrDf.shape[0]
+    sigInd = (corrDf['pvalue'] < 0.05).values
+    
+    axh = plt.gca()
+    axh.cla()
+    axh.barh(bottom=np.arange(ncy)[~sigInd], width=corrDf.rho.loc[~sigInd], color='black', align='center')
+    axh.barh(bottom=np.arange(ncy)[sigInd], width=corrDf.rho.loc[sigInd], color='red', align='center')
+    plt.yticks(range(ncy), corrDf.index)
     plt.grid(True, axis='x')
-    plt.xlabel('Correlation between cytokines\nacross compartments ($\\rho$)')
-    plot([0,0],[-1,tmpCorr.shape[0]],'k-',lw=1)
-    plt.ylim((-1, tmpCorr.shape[0]))
+    plt.xlabel('Cross compartment correlation ($\\rho$)')
+    plt.ylim((-1,ncy))
     plt.xlim((-1,1))
+    plt.tight_layout()
+
+def plotClusterOverlap(labelsA, labelsB, useCommon=False):
+    if useCommon:
+        labelsA, labelsB = labelsA.align(labelsB, join='inner')
+    def _thickness(labelsA, labelsB, a, b):
+        indA = labelsA == a
+        indB = labelsB == b
+        return 2 * (indA & indB).sum()/(indA.sum() + indB.sum())
+    
+    alignedB = alignClusters(labelsA, labelsB)
+    
+    yA = np.linspace(10,0,np.unique(labelsA).shape[0])
+    yB = np.linspace(10,0,np.unique(labelsB).shape[0])
+
+    axh = plt.gca()
+    axh.cla()
+    annParams = dict(ha = 'center', va = 'center', size = 'x-large', zorder = 15)
+    for ai, a in enumerate(np.unique(labelsA)):
+        axh.annotate(s = '%s' % a, xy = (0,yA[ai]), color = 'black', **annParams)
+        for bi, b in enumerate(np.unique(alignedB)):
+            if ai == 0:
+                axh.annotate(s = '%s' % b, xy = (1,yB[bi]), color = 'white', **annParams)
+            axh.plot([0,1], [yA[ai], yB[bi]], '-', lw = 20 * _thickness(labelsA, alignedB, a, b), color = 'black', alpha = 0.7, zorder = 5)
+
+    axh.scatter(np.zeros(np.unique(labelsA).shape[0]), yA, s = 1000, color = 'red', zorder = 10)
+    axh.scatter(np.ones(np.unique(alignedB).shape[0]), yB, s = 1000, color = 'blue', zorder = 10)
+    plt.axis('off')
+    plt.draw()
+
+def plotCrossCompartmentHeatmap(cyDfA, cyDfB, n_clusters=4):
+    rho,pvalue,qvalue = crosscorr(cyDfA[sorted(cyDfA.columns)], cyDfB[sorted(cyDfB.columns)])
+    if n_clusters is None:
+        heatmap(rho, vmin=-1, vmax=1)   
+    else:
+        rho_sorted = plotBicluster(rho, n_clusters=n_clusters)
+
+def plotCrossCompartmentBoxplot(cyDfA, cyDfB):
+    rho,pvalue,qvalue = crosscorr(cyDfA[sorted(cyDfA.columns)], cyDfB[sorted(cyDfB.columns)])
+        
+    s = [rho.loc[i,j] for i,j in itertools.product(rho.index, rho.columns) if i == j]
+    d = [rho.loc[i,j] for i,j in itertools.product(rho.index, rho.columns) if i != j]
+    a = pd.DataFrame({'Group':['Same']*len(s) + ['Different']*len(d), '$\\rho$':s+d})
+    
+    plt.clf()
+    sns.boxplot(x='Group', y='$\\rho$', data=a)
+    sns.stripplot(x='Group', y='$\\rho$', data=a, jitter=True)
+    plt.xlabel('')
+    plt.ylim((-1,1))
     plt.tight_layout()
 
 def outcomeBoxplot(cyDf, cyVar, outcomeVar, printP=True, axh=None):
     if axh is None:
         axh = plt.gca()
     axh.cla()
-    sns.boxplot(y = cyVar, x = outcomeVar, data = cyDf, ax = axh, order  = [0,1])
-    sns.stripplot(y = cyVar, x = outcomeVar, data = cyDf, jitter = True, ax = axh, order  = [0,1])
+    sns.boxplot(y=cyVar, x=outcomeVar, data=cyDf, ax=axh, order=[0,1])
+    sns.stripplot(y=cyVar, x=outcomeVar, data=cyDf, jitter=True, ax=axh, order=[0,1])
     plt.xticks([0,1], ['False', 'True'])
     if printP:
         tmp = cyDf[[cyVar, outcomeVar]].dropna()
@@ -346,119 +375,12 @@ def plotROC(cyDf, cyVarList, outcomeVar, n_folds=5):
     plt.legend(loc="lower right")
     plt.show()
 
-def _cyNHeatmap(df, cyDict, cySets, studyStr):
+def cyNHeatmap(cyDf):
     """Heatmap showing number of data points for each potential pairwise comparison of cytokines"""
-    figure(2,figsize=(15,11.8))
-    for cySet in cySets:
-        pwCounts = validPairwiseCounts(df,cyDict[cySet])
-        heatmap(pwCounts, cmap = cm.gray, edgecolors = 'w', labelSize = 'medium')
-        tight_layout()
-        figure(2).savefig(DATA_PATH + 'RandolphFlu/figures/%s_num_cy_%s.png' % (studyStr,cySet))
-
-    figure(3,figsize=(22,10))
-    pwCounts = validPairwiseCounts(df,cyDict['All'])
-    heatmap(pwCounts, cmap = cm.gray, edgecolors='w', labelSize='small')
-    tight_layout()
-    figure(3).savefig(DATA_PATH + 'RandolphFlu/figures/%s_num_cy_All.png' % studyStr)
-
-def _plotClusterNetwork(df, labels):
-    """WORK IN PROGRESS"""
-    metric = 'pearson-signed'
-    minPatients = 30
-    K = 6
-    tiss = 'ETT'
-    dmatFunc = partial(computeDMat, metric = metric, minN = minPatients)
-    dmat = dmatFunc(fillMissing(ndf[cyVars[tiss]], cyVars[tiss]))
-    dt = [('rho', float)]
-    A = np.matrix([[(dmat[i,j],) for j in range(dmat.shape[1])] for i in range(dmat.shape[0])], dtype = dt)
-    g = nx.from_numpy_matrix(A)
-    g = nx.relabel_nodes(g, {i:col.split(' ')[0] for i,col in enumerate(cyVars[tiss])})
-
-    drawParams = dict(font_size = 9,
-                      font_weight = 'bold',
-                      with_labels = True,
-                      node_size = 500)
-
-    """This is a threshld on DISTANCE"""
-    threshold = 0.2
-    edgelist = [(u,v) for u,v,data in g.edges_iter(data = True) if data['rho'] < threshold]
-
-    figure(2)
-    clf()
-    pos = nx.graphviz_layout(g, prog = 'neato')
-    nx.draw(g, pos = pos, edgelist = edgelist, **drawParams)
-
-
-    g = nx.Graph()
-    """Add a node for each unique value in each column with name: col_value"""
-    for col in df.columns:
-        for val in df[col].unique():
-            freq = (df[col]==val).sum()/df.shape[0]
-            g.add_node((col,val),freq=freq)
-    """Add edges for each unique pair of values
-    with edgewidth proportional to frequency of pairing"""
-    for col1,col2 in itertools.combinations(df.columns,2):
-        for val1,val2 in itertools.product(df[col1].unique(),df[col2].unique()):
-            w = ((df[col1]==val1) & (df[col2]==val2)).sum()
-            if w>0:
-                dat = dict(weight = w/df.shape[0])
-                dat['pvalue'] = pvalueArr[edgeKeys.index(((col1,val1),(col2,val2)))]
-                dat['qvalue'] = qvalueArr[edgeKeys.index(((col1,val1),(col2,val2)))]
-                g.add_edge((col1,val1),(col2,val2),**dat)
-
-
-    """Compute attributes of edges and nodes"""
-    edgewidth = array([d['weight'] for n1,n2,d in g.edges(data=True)])
-    nodesize = array([d['freq'] for n,d in g.nodes(data=True)])
-
-    nColors = min(max(len(df.columns),3),9)
-    colors = brewer2mpl.get_map('Set1','Qualitative',nColors).mpl_colors
-    cmap = {c:color for c,color in zip(df.columns, itertools.cycle(colors))}
-    nodecolors = [cmap[n[0]] for n in g.nodes()]
-    if layout == 'twopi':
-        """If using this layout specify the most common node as the root"""
-        freq = {n:d['freq'] for n,d in g.nodes(data=True)}
-        pos = nx.graphviz_layout(g,prog=layout, root=max(freq.keys(),key=freq.get))
-    else:
-        pos = nx.graphviz_layout(g,prog=layout)
-
-    """Use either matplotlib or plot.ly to plot the network"""
-    if mode == 'mpl':
-        clf()
-        figh=gcf()
-        axh=figh.add_axes([0.04,0.04,0.92,0.92])
-        axh.axis('off')
-        figh.set_facecolor('white')
-
-        #nx.draw_networkx_edges(g,pos,alpha=0.5,width=sznorm(edgewidth,mn=0.5,mx=10), edge_color='k')
-        #nx.draw_networkx_nodes(g,pos,node_size=sznorm(nodesize,mn=500,mx=5000),node_color=nodecolors,alpha=1)
-        ew = szscale(edgewidth,mn=wRange[0],mx=wRange[1])
-
-        for es,e in zip(ew,g.edges_iter()):
-            x1,y1=pos[e[0]]
-            x2,y2=pos[e[1]]
-            props = dict(color='black',alpha=0.4,zorder=1)
-            if testSig and g[e[0]][e[1]]['qvalue'] < testSig:
-                props['color']='orange'
-                props['alpha']=0.8
-            plot([x1,x2],[y1,y2],'-',lw=es,**props)
-
-        scatter(x=[pos[s][0] for s in g.nodes()],
-                y=[pos[s][1] for s in g.nodes()],
-                s=szscale(nodesize,mn=sRange[0],mx=sRange[1]), #Units for scatter is (size in points)**2
-                c=nodecolors,
-                alpha=1,zorder=2)
-        for n in g.nodes():
-            annotate(n[1],
-                    xy=pos[n],
-                    fontname='Consolas',
-                    size='medium',
-                    weight='bold',
-                    color='black',
-                    va='center',
-                    ha='center')
-        colorLegend(labels=df.columns,colors = [c for x,c in zip(df.columns,colors)],loc=0)
-        title(titleStr)
+    plt.clf()
+    pwCounts = validPairwiseCounts(cyDf)
+    heatmap(pwCounts, cmap=cm.gray, edgecolors='w', labelSize='medium')
+    plt.tight_layout()
 
 def _colors2labels(labels, setStr = 'Set3', cmap = None):
     """Return pd.Series of colors based on labels"""
@@ -550,3 +472,4 @@ def plotHierClust(dmatDf, Z, labels=None, titleStr=None, vRange=None, tickSz='sm
     """Add title as xaxis label"""
     if not titleStr is None:
         heatmapAX.set_xlabel(titleStr,size='x-large')
+
