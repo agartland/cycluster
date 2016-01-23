@@ -93,7 +93,7 @@ def labels2modules(labels, dropped = None):
 
     return out
 
-def makeModuleVariables(cyDf, labels, dropped = None):
+def makeModuleVariables(cyDf, labels, sampleStr='M', dropped=None):
     """Define variable for each module by standardizing all the cytokines in the
     module and taking the mean. Can be applied to a stacked df with multiple timepoints.
     Standardization will be performed across all data.
@@ -122,7 +122,7 @@ def makeModuleVariables(cyDf, labels, dropped = None):
     for lab in uLabels:
         members = labels.index[(labels == lab) & (~dropped)]
         tmpS = cyDf.loc[:,members].apply(standardizeFunc, raw = True).mean(axis = 1, skipna=True)
-        tmpS.name = 'M%s' % lab
+        tmpS.name = '%s%s' % (sampleStr,lab)
         if out is None:
             out = pd.DataFrame(tmpS)
         else:
@@ -197,13 +197,13 @@ class cyclusterClass(object):
             self.labels = self.labels.map(labelMap)
         if not alignLabels is None:
             self.labels = alignClusters(alignLabels, self.labels)
-        self.modS = labels2modules(self.labels, dropped = self.dropped)
-        self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
+        self.modS = labels2modules(self.labels, dropped=self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         if self.normed:
-            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped = self.dropped)
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
         else:
             self.rModDf = self.modDf
-        _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat = True)
+        _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat=True)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
     def gmmClusterCytokines(self, alignLabels=None, minInclusionProb=0.8, K=6, n_components=4):
@@ -217,7 +217,7 @@ class cyclusterClass(object):
     def printModules(self, modules=None):
         tmp = labels2modules(self.labels, dropped=None)
         for m in tmp.keys():
-            mStr = 'M%d' % m
+            mStr = '%s%d' % (self.sampleStr,m)
             if modules is None or mStr == modules or mStr in modules:
                 print mStr
                 for c in sorted(tmp[m]):
