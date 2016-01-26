@@ -45,7 +45,7 @@ __all__ = ['plotModuleEmbedding',
            'plotCrossCompartmentBars',
            'plotHierClust']
 
-def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1]):
+def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1], weights=None):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     uLabels = np.unique(labels).tolist()
     n_components = max(plotDims) + 1
@@ -80,7 +80,11 @@ def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=
         if plotLabels:
             axh.annotate(cyLab, xy = (xy[cyi,plotDims[0]], xy[cyi,plotDims[1]]), **annotationParams)
         col = colors[uLabels.index(labels[cyi])]
-        axh.scatter(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]], marker='o', s=100, alpha=alpha, c=col)
+        if weights is None:
+            s = 100
+        else:
+            s = weights[cy] * 200 + 10
+        axh.scatter(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]], marker='o', s=s, alpha=alpha, c=col)
     plt.draw()
 
 def plotModuleCorr(cyDf, labels, plotLabel, sampleStr='M', dropped=None, compCommVar=None):
