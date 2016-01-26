@@ -11,7 +11,7 @@ __all__ = ['transformCytokines',
            'partialCorrNormalize',
            'convertLevel']
 
-def meanSubNormalize(cyDf, cyVars = None, compCommVars = None, meanVar = None):
+def meanSubNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     """Normalize cytokine columns by the log-mean for each patient, within each compartment.
     The point is that if cytokine concentrations are generally high for one sample or another,
     this might dominate the covariation of cytokines across patients (both within/across compartments).

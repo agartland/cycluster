@@ -17,6 +17,7 @@ from matplotlib import cm
 import scipy.cluster.hierarchy as sch
 
 from corrplots import validPairwiseCounts, partialcorr, combocorrplot, crosscorr, heatmap
+from hclusterplot import plotBicluster
 import statsmodels.api as sm
 from scipy import stats
 
@@ -44,7 +45,7 @@ __all__ = ['plotModuleEmbedding',
            'plotCrossCompartmentBars',
            'plotHierClust']
 
-def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1]):
+def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1], weights=None):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     uLabels = np.unique(labels).tolist()
     n_components = max(plotDims) + 1
@@ -79,13 +80,17 @@ def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=
         if plotLabels:
             axh.annotate(cyLab, xy=(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]]), **annotationParams)
         col = colors[uLabels.index(labels[cyi])]
-        axh.scatter(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]], marker='o', s=100, alpha=alpha, c=col)
+        if weights is None:
+            s = 100
+        else:
+            s = weights[cy] * 200 + 10
+        axh.scatter(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]], marker='o', s=s, alpha=alpha, c=col)
     plt.draw()
 
-def plotModuleCorr(cyDf, labels, plotLabel, dropped=None, compCommVar=None):
+def plotModuleCorr(cyDf, labels, plotLabel, sampleStr='M', dropped=None, compCommVar=None):
     """Make a corr plot for a module."""
-    modDf = makeModuleVariables(cyDf[labels.index], labels, dropped = dropped)
-    modVar = 'M%s' % plotLabel
+    modDf = makeModuleVariables(cyDf[labels.index], labels, dropped=dropped)
+    modVar = '%s%s' % (sampleStr, plotLabel)
     cyVars = labels2modules(labels, dropped = None)[plotLabel]
     if not compCommVar is None:
         cyVars.append(compCommVar)
@@ -99,7 +104,7 @@ def plotModuleCorr(cyDf, labels, plotLabel, dropped=None, compCommVar=None):
     figh.clf()
     combocorrplot(tmpDf, method = 'pearson')
     axh = plt.gca()
-    axh.annotate('Module M%s' % (plotLabel), xy=(0.5,0.99), xycoords='figure fraction', va = 'top', ha='center')
+    axh.annotate('Module %s%s' % (sampleStr, plotLabel), xy=(0.5,0.99), xycoords='figure fraction', va = 'top', ha='center')
 
 def plotInterModuleCorr(cyDf, labels, dropped = None, compCommVar = None):
     """Make a plot showing inter-module correlation"""

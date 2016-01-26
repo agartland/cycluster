@@ -5,16 +5,19 @@ from gapstat import computeGapStat
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 import numpy as np
 import pandas as pd
+from functools import partial
 from sklearn.decomposition import KernelPCA, PCA
 from sklearn.mixture import GMM, DPGMM
 from comparison import _alignClusterMats, alignClusters
 from preprocessing import partialCorrNormalize
 
 from corrplots import partialcorr
+from kmedoids import fuzzycmedoids
 import statsmodels.api as sm
 
 __all__ = ['hierClusterFunc',
            'gmmClusterFunc',
+           'FCMClusterFunc',
            'corrDmatFunc',
            'makeModuleVariables',
            'formReliableClusters',
@@ -22,7 +25,7 @@ __all__ = ['hierClusterFunc',
            'cyclusterClass',
            'meanCorr']
 
-def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
+def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
     if dfunc is None:
         if metric in ['spearman', 'pearson']:
             """Anti-correlations are also considered as high similarity and will cluster together"""
@@ -51,7 +54,7 @@ def corrDmatFunc(cyDf, metric = 'pearson-signed', dfunc = None, minN = 30):
                     dmat[j,i] = d
     return pd.DataFrame(dmat, columns = cyDf.columns, index = cyDf.columns)
 
-def hierClusterFunc(dmatDf, K = 6, method = 'complete', returnLinkageMat = False):
+def hierClusterFunc(dmatDf, K=6, method='complete', returnLinkageMat=False):
     hclusters = sch.linkage(dmatDf.values, method = method)
     labelsVec = sch.fcluster(hclusters, K, criterion = 'maxclust')
     labels = pd.Series(labelsVec, index = dmatDf.columns)
@@ -60,7 +63,7 @@ def hierClusterFunc(dmatDf, K = 6, method = 'complete', returnLinkageMat = False
     else:
         return labels, hclusters
 
-def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps = 500, threshold = 0.5):
+def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps=500, threshold=0.5):
     """Use bootstrap_clustering to determine the reliable clusters"""
     clusters = {}
     dmatDf = dmatFunc(cyDf)
@@ -93,7 +96,7 @@ def labels2modules(labels, dropped = None):
 
     return out
 
-def makeModuleVariables(cyDf, labels, dropped = None):
+def makeModuleVariables(cyDf, labels, sampleStr='M', dropped=None):
     """Define variable for each module by standardizing all the cytokines in the
     module and taking the mean. Can be applied to a stacked df with multiple timepoints.
     Standardization will be performed across all data.
@@ -122,13 +125,25 @@ def makeModuleVariables(cyDf, labels, dropped = None):
     for lab in uLabels:
         members = labels.index[(labels == lab) & (~dropped)]
         tmpS = cyDf.loc[:,members].apply(standardizeFunc, raw = True).mean(axis = 1, skipna=True)
-        tmpS.name = 'M%s' % lab
+        tmpS.name = '%s%s' % (sampleStr,lab)
         if out is None:
             out = pd.DataFrame(tmpS)
         else:
             out = out.join(tmpS)
     out = out.apply(standardizeFunc)
     return out
+
+def FCMClusterFunc(cyDf, dmatFunc, K=6, minInclusionProb=0.8, membershipMethod=('FCM',2)):
+    """Use fuzzy c-medoids algorithm to cluster."""
+    dmatDf = dmatFunc(cyDf)
+    medoids, membership, niter, nfound = fuzzycmedoids(dmatDf.values, c=K, maxIter=1000, nPasses=1000, membershipMethod=(2,2))
+    print niter, nfound
+
+    """Each cytokine is assigned to the ML cluster, but is dropped if Pr < minInclusion"""
+    probDf = pd.DataFrame(membership, index=dmatDf.index, columns=dmatDf.columns[medoids])
+    labels = pd.Series(np.argmax(membership, axis=1), index=dmatDf.index)
+    dropped = pd.Series(np.max(membership, axis=1) < minInclusionProb, index=cyDf.columns)
+    return probDf, labels, dropped
 
 def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
     """Use Gaussian Mixture Models to cluster
@@ -139,7 +154,7 @@ def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
     dmatDf = dmatFunc(cyDf)
 
     """First establish that with these parameters we get the same result everytime using the same data"""
-    gmmParams = dict(n_components = K, n_init = 100, n_iter = 100, tol = 1e-6)
+    gmmParams = dict(n_components=K, n_init=100, n_iter=100, tol=1e-6)
     g = GMM(**gmmParams)
 
     """First, reduce the dimensionality of the data (KPCA also solves the missing data problem by using pairwise corr)"""
@@ -191,33 +206,53 @@ class cyclusterClass(object):
         self.cyDf.sampleStr = sampleStr
         self.cyDf.normed = normed
 
-    def clusterCytokines(self, alignLabels=None, labelMap=None):
-        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, hierClusterFunc, threshold=0)
+    def clusterCytokines(self, K=6, alignLabels=None, labelMap=None):
+        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, partial(hierClusterFunc, K=6), threshold=0)
         if not labelMap is None:
             self.labels = self.labels.map(labelMap)
         if not alignLabels is None:
             self.labels = alignClusters(alignLabels, self.labels)
-        self.modS = labels2modules(self.labels, dropped = self.dropped)
-        self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
+        self.modS = labels2modules(self.labels, dropped=self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         if self.normed:
-            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped = self.dropped)
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
         else:
             self.rModDf = self.modDf
-        _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat = True)
+        _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat=True)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
-    def gmmClusterCytokines(self, alignLabels=None, minInclusionProb=0.8, K=6, n_components=4):
-        self.probDf, self.labels, self.dropped = gmmClusterFunc(self.cyDf, corrDmatFunc, minInclusionProb, K, n_components)
+    def gmmClusterCytokines(self, K=6, alignLabels=None, minInclusionProb=0.8, n_components=4, labelMap=None):
+        self.probDf, self.labels, self.dropped = gmmClusterFunc(self.cyDf, corrDmatFunc, minInclusionProb, K=K, n_components=n_components)
+        if not labelMap is None:
+            self.labels = self.labels.map(labelMap)
         if not alignLabels is None:
             self.labels = alignClusters(alignLabels, self.labels)
-        self.modS = labels2modules(self.labels, dropped = self.dropped)
-        self.modDf = makeModuleVariables(self.cyDf, self.labels, dropped = self.dropped)
+        self.modS = labels2modules(self.labels, dropped=self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         self.dmatDf = corrDmatFunc(self.cyDf)
+        if self.normed:
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
+        else:
+            self.rModDf = self.modDf
+
+    def FCMClusterCytokines(self, K=6, alignLabels=None, minInclusionProb=0.8, labelMap=None):
+        self.probDf, self.labels, self.dropped = FCMClusterFunc(self.cyDf, corrDmatFunc, K, minInclusionProb=minInclusionProb)
+        if not labelMap is None:
+            self.labels = self.labels.map(labelMap)
+        if not alignLabels is None:
+            self.labels = alignClusters(alignLabels, self.labels)
+        self.modS = labels2modules(self.labels, dropped=self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
+        self.dmatDf = corrDmatFunc(self.cyDf)
+        if self.normed:
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
+        else:
+            self.rModDf = self.modDf
 
     def printModules(self, modules=None):
         tmp = labels2modules(self.labels, dropped=None)
         for m in tmp.keys():
-            mStr = 'M%d' % m
+            mStr = '%s%d' % (self.sampleStr,m)
             if modules is None or mStr == modules or mStr in modules:
                 print mStr
                 for c in sorted(tmp[m]):
