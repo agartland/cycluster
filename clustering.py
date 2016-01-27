@@ -29,7 +29,7 @@ def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
     if dfunc is None:
         if metric in ['spearman', 'pearson']:
             """Anti-correlations are also considered as high similarity and will cluster together"""
-            dmat = (1 - cyDf.corr(method = metric, min_periods = minN).values**2)
+            dmat = (1 - np.abs(cyDf.corr(method=metric, min_periods=minN).values))
             dmat[np.isnan(dmat)] = 1
         elif metric in ['spearman-signed', 'pearson-signed']:
             """Anti-correlations are considered as dissimilar and will NOT cluster together"""
