@@ -38,7 +38,7 @@ def meanSubNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     ndf.loc[:, meanVar] = muVec
     return ndf
 
-def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
+def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, returnModels=True):
     """Computes residuals in-place after regressing each cytokine on the mean cytokine level
     Correlations among residuals are partial correlations, adjusting for meanVar
 
@@ -55,13 +55,16 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     meanVar : str
         Name of the cytokine mean column added to the df
         (default: "compComm")
+    returnModels : bool
+        If True, return the fitted statsmodels.GLM objects for transforming additional timepoints.
 
     Returns
     -------
     nCyDf : pd.DataFrame
         Residuals after regressing each cyVar on the mean cytokine level for each row.
     models : pd.Series
-        Result object from the regression for each cytokine (index), that can be used
+        If returnModels is True,
+        result object from the regression for each cytokine (index), that can be used
         to normalize additional timepoints."""
 
     def _meanCorrModel(colVec):
@@ -75,9 +78,9 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     if cyVars is None:
         cyVars = cyDf.columns
     if meanVar is None:
-        meanVar = 'compComm'
+        meanVar = 'Mean'
     if compCommVars is None:
-        compCommVars = cyDf.columns
+        compCommVars = cyVars
 
     """Standardize each cytokine before taking the mean.
     Ensures equal "weighting" between cytokines when computing the mean level."""
@@ -88,7 +91,11 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     ndf = cyDf.copy()
     ndf.loc[:,cyVars] = ndf.loc[:,cyVars].apply(_meanCorrResiduals, axis=0)
     ndf.loc[:, meanVar] = muVec
-    return ndf, models
+
+    if returnModels:
+        return ndf, models
+    else:
+        return ndf
 
 def fillMissing(df):
     """Drop rows (PTIDs) that have fewer than 90% of their cytokines"""
