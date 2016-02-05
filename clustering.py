@@ -17,7 +17,8 @@ __all__ = ['hierClusterFunc',
            'formReliableClusters',
            'labels2modules',
            'cyclusterClass',
-           'meanCorr']
+           'meanCorr',
+           'silhouette']
 
 def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
     if dfunc is None:
@@ -127,9 +128,8 @@ def makeModuleVariables(cyDf, labels, sampleStr='M', dropped=None):
     out = out.apply(standardizeFunc)
     return out
 
-
 def meanCorr(cyDf, meanVar, cyList=None, method='pearson'):
-    """Plot of each cytokine's correlation with the mean."""
+    """Each cytokine's correlation with the mean."""
     if cyList is None:
         cyList = np.array([c for c in cyDf.columns if not c == meanVar])
     cyList = np.asarray(cyList)
@@ -142,6 +142,22 @@ def meanCorr(cyDf, meanVar, cyList=None, method='pearson'):
     _, tmpCorr[:,2], _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha=0.2, method='fdr_bh')
     return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho','pvalue','qvalue'])
 
+def silhouette(dmatDf, labels):
+    """Compute the silhouette of every analyte."""
+    def oneSilhouette(cy):
+        modInd = labels == labels[cy]
+        a = dmatDf.loc[cy, modInd].sum()
+
+        b = None
+        for lab in labels.unique():
+            if not lab == labels[cy]:
+                tmp = dmatDf.loc[cy, labels==lab].sum()
+                if b is None or tmp < b:
+                    b = tmp
+        s = (b - a)/max(b,a)
+        return s
+    return labels.index.map(oneSilhouette)
+
 class cyclusterClass(object):
     def __init__(self, studyStr, sampleStr, normed, rCyDf, compCommVars=None):
         self.studyStr = studyStr
@@ -150,8 +166,8 @@ class cyclusterClass(object):
         self.cyVars = rCyDf.columns.tolist()
         self.rCyDf = rCyDf.copy()
 
-        self.nCyDf, self.normModels = partialCorrNormalize(rCyDf, compCommVars=compCommVars, meanVar='compComm')
-        self.compCommS = self.nCyDf['compComm']
+        self.nCyDf, self.normModels = partialCorrNormalize(rCyDf, compCommVars=compCommVars, meanVar='Mean')
+        self.meanS = self.nCyDf['Mean']
         self.nCyDf = self.nCyDf[self.cyVars]
         if normed:
             self.cyDf = self.nCyDf
@@ -160,6 +176,25 @@ class cyclusterClass(object):
         
         self.cyDf.sampleStr = sampleStr
         self.cyDf.normed = normed
+
+    def applyModules(self, target):
+        """Use modules from target for computing module values.
+
+        Parameters
+        ----------
+        target : cyclusterClass"""
+        self.pwrel = target.pwrel
+        self.Z = target.Z
+        self.dmatDf = target.dmatDf
+        self.labels = target.labels
+        self.dropped = target.dropped
+        
+        self.modS = labels2modules(self.labels, dropped=self.dropped)
+        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
+        if self.normed:
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
+        else:
+            self.rModDf = self.modDf
 
     def clusterCytokines(self, K=6, alignLabels=None, labelMap=None):
         self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, partial(hierClusterFunc, K=6), threshold=0)
@@ -219,7 +254,7 @@ class cyclusterClass(object):
         return '%s_%s_%s_' % (self.studyStr, self.sampleStr, 'normed' if self.normed else 'raw')
     @property
     def withMean(self):
-        return self.cyDf.join(self.compCommS)
+        return self.cyDf.join(self.meanS)
     @property
     def modWithMean(self):
-        return self.modDf.join(self.compCommS)
+        return self.modDf.join(self.meanS)

@@ -26,7 +26,7 @@ def meanSubNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     if cyVars is None:
         cyVars = cyDf.columns
     if meanVar is None:
-        meanVar = 'compComm'
+        meanVar = 'Mean'
     if compCommVars is None:
         cyDf.columns
 
@@ -54,7 +54,7 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
         (default: all columns in cyDf)
     meanVar : str
         Name of the cytokine mean column added to the df
-        (default: "compComm")
+        (default: "Mean")
 
     Returns
     -------
@@ -75,7 +75,7 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     if cyVars is None:
         cyVars = cyDf.columns
     if meanVar is None:
-        meanVar = 'compComm'
+        meanVar = 'Mean'
     if compCommVars is None:
         compCommVars = cyDf.columns
 
