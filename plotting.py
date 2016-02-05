@@ -68,7 +68,7 @@ def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=
     axh = figh.add_axes([0.03,0.03,0.94,0.94])
     axh.axis('off')
     figh.set_facecolor('white')
-    annotationParams = dict(xytext=(0,5), textcoords='offset points', size='x-small')
+    annotationParams = dict(xytext=(0,5), textcoords='offset points', size='medium')
     for cyi,cy in enumerate(dmatDf.columns):
         if not dropped is None and dropped[cy]:
             cyLab = '*' + cy
@@ -78,7 +78,7 @@ def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=
             alpha = 0.8
 
         if plotLabels:
-            axh.annotate(cyLab, xy = (xy[cyi,plotDims[0]], xy[cyi,plotDims[1]]), **annotationParams)
+            axh.annotate(cyLab, xy=(xy[cyi,plotDims[0]], xy[cyi,plotDims[1]]), **annotationParams)
         col = colors[uLabels.index(labels[cyi])]
         if weights is None:
             s = 100

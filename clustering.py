@@ -1,23 +1,17 @@
 from __future__ import division
 import scipy.cluster.hierarchy as sch
-#import scipy.spatial.distance as distance
-from gapstat import computeGapStat
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 import numpy as np
 import pandas as pd
 from functools import partial
-from sklearn.decomposition import KernelPCA, PCA
-from sklearn.mixture import GMM, DPGMM
 from comparison import _alignClusterMats, alignClusters
 from preprocessing import partialCorrNormalize
 
 from corrplots import partialcorr
-from kmedoids import fuzzycmedoids
+
 import statsmodels.api as sm
 
 __all__ = ['hierClusterFunc',
-           'gmmClusterFunc',
-           'FCMClusterFunc',
            'corrDmatFunc',
            'makeModuleVariables',
            'formReliableClusters',
@@ -29,7 +23,7 @@ def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
     if dfunc is None:
         if metric in ['spearman', 'pearson']:
             """Anti-correlations are also considered as high similarity and will cluster together"""
-            dmat = (1 - cyDf.corr(method = metric, min_periods = minN).values**2)
+            dmat = (1 - np.abs(cyDf.corr(method=metric, min_periods=minN).values))
             dmat[np.isnan(dmat)] = 1
         elif metric in ['spearman-signed', 'pearson-signed']:
             """Anti-correlations are considered as dissimilar and will NOT cluster together"""
@@ -133,45 +127,6 @@ def makeModuleVariables(cyDf, labels, sampleStr='M', dropped=None):
     out = out.apply(standardizeFunc)
     return out
 
-def FCMClusterFunc(cyDf, dmatFunc, K=6, minInclusionProb=0.8, membershipMethod=('FCM',2)):
-    """Use fuzzy c-medoids algorithm to cluster."""
-    dmatDf = dmatFunc(cyDf)
-    medoids, membership, niter, nfound = fuzzycmedoids(dmatDf.values, c=K, maxIter=1000, nPasses=1000, membershipMethod=(2,2))
-    print niter, nfound
-
-    """Each cytokine is assigned to the ML cluster, but is dropped if Pr < minInclusion"""
-    probDf = pd.DataFrame(membership, index=dmatDf.index, columns=dmatDf.columns[medoids])
-    labels = pd.Series(np.argmax(membership, axis=1), index=dmatDf.index)
-    dropped = pd.Series(np.max(membership, axis=1) < minInclusionProb, index=cyDf.columns)
-    return probDf, labels, dropped
-
-def gmmClusterFunc(cyDf, dmatFunc, minInclusionProb=0.8, K=6, n_components=4):
-    """Use Gaussian Mixture Models to cluster
-    The probabilities seem too high.
-    Check convergence diagnostics.
-    Try to plot the cluster density in 2D."""
-
-    dmatDf = dmatFunc(cyDf)
-
-    """First establish that with these parameters we get the same result everytime using the same data"""
-    gmmParams = dict(n_components=K, n_init=100, n_iter=100, tol=1e-6)
-    g = GMM(**gmmParams)
-
-    """First, reduce the dimensionality of the data (KPCA also solves the missing data problem by using pairwise corr)"""
-    pca = KernelPCA(kernel='precomputed', n_components=n_components)
-    gram = 1 - (dmatDf.values / dmatDf.values.max())
-    xy = pca.fit_transform(gram)
-    redDf = pd.DataFrame(xy, index=dmatDf.index, columns=range(n_components))
-
-    g.fit(redDf.values)
-    prob = g.predict_proba(redDf.values)
-
-    """Each cytokine is assigned to the ML cluster, but is dropped if Pr < minInclusion"""
-    probDf = pd.DataFrame(prob,index=cyDf.columns, columns=range(K))
-    labels = pd.Series(np.argmax(prob, axis=1), index=cyDf.columns)
-    dropped = pd.Series(np.max(prob, axis=1) < minInclusionProb, index=cyDf.columns)
-
-    return probDf, labels, dropped
 
 def meanCorr(cyDf, meanVar, cyList=None, method='pearson'):
     """Plot of each cytokine's correlation with the mean."""
@@ -220,34 +175,6 @@ class cyclusterClass(object):
             self.rModDf = self.modDf
         _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat=True)
         self.dmatDf = corrDmatFunc(self.cyDf)
-
-    def gmmClusterCytokines(self, K=6, alignLabels=None, minInclusionProb=0.8, n_components=4, labelMap=None):
-        self.probDf, self.labels, self.dropped = gmmClusterFunc(self.cyDf, corrDmatFunc, minInclusionProb, K=K, n_components=n_components)
-        if not labelMap is None:
-            self.labels = self.labels.map(labelMap)
-        if not alignLabels is None:
-            self.labels = alignClusters(alignLabels, self.labels)
-        self.modS = labels2modules(self.labels, dropped=self.dropped)
-        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
-        self.dmatDf = corrDmatFunc(self.cyDf)
-        if self.normed:
-            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
-        else:
-            self.rModDf = self.modDf
-
-    def FCMClusterCytokines(self, K=6, alignLabels=None, minInclusionProb=0.8, labelMap=None):
-        self.probDf, self.labels, self.dropped = FCMClusterFunc(self.cyDf, corrDmatFunc, K, minInclusionProb=minInclusionProb)
-        if not labelMap is None:
-            self.labels = self.labels.map(labelMap)
-        if not alignLabels is None:
-            self.labels = alignClusters(alignLabels, self.labels)
-        self.modS = labels2modules(self.labels, dropped=self.dropped)
-        self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
-        self.dmatDf = corrDmatFunc(self.cyDf)
-        if self.normed:
-            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
-        else:
-            self.rModDf = self.modDf
 
     def printModules(self, modules=None):
         tmp = labels2modules(self.labels, dropped=None)
