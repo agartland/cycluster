@@ -159,6 +159,7 @@ def logisticRegressionResults(df, outcome, predictors, adj=[]):
             assoc[i, 0] = np.exp(res.params[predc])
             assoc[i, 3] = res.pvalues[predc]
             assoc[i, 1:3] = np.exp(res.conf_int().loc[predc])
+            assoc[i,4] = tmp[predc].loc[tmp[outcome]==1].mean() - tmp[predc].loc[tmp[outcome]==0].mean()
             params.append(res.params.to_dict())
             pvalues.append(res.pvalues.to_dict())
         except sm.tools.sm_exceptions.PerfectSeparationError:
@@ -168,7 +169,7 @@ def logisticRegressionResults(df, outcome, predictors, adj=[]):
             params.append({k:np.nan for k in [predc] + adj})
             pvalues.append({k:np.nan for k in [predc] + adj})
             print 'PerfectSeparationError: %s with %s' % (predc, outcome)
-    outDf = pd.DataFrame(assoc[:,:4], index=predictors, columns=['OR','LL','UL','pvalue'])
+    outDf = pd.DataFrame(assoc[:,:5], index=predictors, columns=['OR','LL','UL','pvalue','Diff'])
     outDf['params'] = params
     outDf['pvalues']= pvalues
     return outDf

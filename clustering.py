@@ -183,16 +183,18 @@ class cyclusterClass(object):
         Parameters
         ----------
         target : cyclusterClass"""
+
         self.pwrel = target.pwrel
         self.Z = target.Z
         self.dmatDf = target.dmatDf
         self.labels = target.labels
         self.dropped = target.dropped
+        self.sampleStr = target.sampleStr
         
         self.modS = labels2modules(self.labels, dropped=self.dropped)
         self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         if self.normed:
-            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         else:
             self.rModDf = self.modDf
 
@@ -205,7 +207,7 @@ class cyclusterClass(object):
         self.modS = labels2modules(self.labels, dropped=self.dropped)
         self.modDf = makeModuleVariables(self.cyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         if self.normed:
-            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, dropped=self.dropped)
+            self.rModDf = makeModuleVariables(self.rCyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         else:
             self.rModDf = self.modDf
         _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat=True)
