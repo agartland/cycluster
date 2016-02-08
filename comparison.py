@@ -6,10 +6,14 @@ from sklearn import metrics
 import pandas as pd
 import statsmodels.api as sm
 from corrplots import partialcorr
+from functools import partial
+from scipy import stats
 
 __all__ = ['compareClusters',
            'alignClusters',
-           'crossCompartmentCorr']
+           'crossCompartmentCorr',
+           'pwdistComp',
+           'pwdistCompXY']
 
 def compareClusters(labelsA, labelsB, method='ARI', alignFirst=True, useCommon=False):
     """Requre that labelsA and labelsB have the same index"""
@@ -116,3 +120,78 @@ def crossCompartmentCorr(dfA, dfB, method='pearson'):
     tmpCorr = tmpCorr[sorti,:]
     _, tmpCorr[:,2], _, _ = sm.stats.multipletests(tmpCorr[:,1], method='fdr_bh')
     return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho','pvalue','qvalue'])
+
+def pwdistCompXY(dmatA, dmatB):
+    """Return unraveled upper triangles of the two distance matrices
+    using only common columns.
+
+    Parameters
+    ----------
+    dmatA, dmatB : pd.DataFrame [nfeatures x nfeatures]
+        Symetric pairwise distance matrices for comparison.
+        Only common columns will be used for comparison (at least 3).
+
+    Returns
+    -------
+    vecA, vecN : np.ndarray"""
+
+    cyVars = [c for c in dmatA.columns if c in dmatB.columns.tolist()]
+    n = len(cyVars)
+    vecA = dmatA[cyVars].loc[cyVars].values[np.triu_indices(n, k=1)]
+    vecB = dmatB[cyVars].loc[cyVars].values[np.triu_indices(n, k=1)]
+    return vecA, vecB
+
+def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000):
+    """Compare two pairwise distance matrices
+    using a permutation test. Test the null-hypothesis that
+    the pairwise distance matrices are uncorrelated.
+
+    Note: comparison is based only on shared columns
+
+    Parameters
+    ----------
+    dmatA, dmatB : pd.DataFrame [nfeatures x nfeatures]
+        Symetric pairwise distance matrices for comparison.
+        Only common columns will be used for comparison (at least 3).
+    method : str
+        Method for comparison: "pearson", "spearman"
+    nperms : int
+        Number of permutations to compute p-value
+
+    Returns
+    -------
+    stat : float
+        Correlation statistic, rho, of all pairwise distances between cytokines.
+    pvalue : float
+        Two-sided pvalue testing the null hypothesis that
+        the distance matrices of dfA and dfB are uncorrelated
+    commonVars : list
+        List of the common columns in A and B"""
+    
+    def corrComp(dmatA, dmatB, method):
+        n = dmatB.shape[0]
+        if method == 'pearson':
+            rho, p = stats.pearsonr(dmatA[np.triu_indices(n, k=1)], dmatB[np.triu_indices(n, k=1)])
+        elif method == 'spearman':
+            rho, p = stats.spearmanr(dmatA[np.triu_indices(n, k=1)], dmatB[np.triu_indices(n, k=1)])
+        else:
+            raise ValueError('Must specify method as "pearson" or "spearman"')
+        return rho
+    
+    cyVars = [c for c in dmatA.columns if c in dmatB.columns.tolist()]
+    ncols = len(cyVars)
+
+    compFunc = partial(corrComp, method=method)
+
+    dA = dmatA[cyVars].loc[cyVars].values
+    dB = dmatB[cyVars].loc[cyVars].values
+    
+    stat = compFunc(dA, dB)
+    permstats = np.zeros(nperms)
+    for i in range(nperms):
+        """Permutation of common columns"""
+        rindA = np.random.permutation(ncols)
+        rindB = np.random.permutation(ncols)
+        permstats[i] = compFunc(dA[rindA,:][:,rindA], dB[rindB,:][:,rindB])
+    pvalue = ((np.abs(permstats) > np.abs(stat)).sum() + 1)/(nperms + 1)
+    return stat, pvalue, cyVars
