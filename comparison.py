@@ -13,7 +13,8 @@ __all__ = ['compareClusters',
            'alignClusters',
            'crossCompartmentCorr',
            'pwdistComp',
-           'pwdistCompXY']
+           'pwdistCompXY',
+           'pwdistCompCI']
 
 def compareClusters(labelsA, labelsB, method='ARI', alignFirst=True, useCommon=False):
     """Requre that labelsA and labelsB have the same index"""
@@ -195,3 +196,57 @@ def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000):
         permstats[i] = compFunc(dA[rindA,:][:,rindA], dB[rindB,:][:,rindB])
     pvalue = ((np.abs(permstats) > np.abs(stat)).sum() + 1)/(nperms + 1)
     return stat, pvalue, cyVars
+
+def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps=10000):
+    """Compare two pairwise distance matrices
+    and compute bootstrap confidence intervals.
+
+    Note: comparison is based only on shared columns
+
+    Parameters
+    ----------
+    dfA, dfA : pd.DataFrame [nfeatures x nfeatures]
+        Symetric pairwise distance matrices for comparison.
+        Only common columns will be used for comparison (at least 3).
+    method : str
+        Method for comparison: "pearson", "spearman"
+    nstraps : int
+        Number of bootstraps used to compute confidence interval.
+
+    Returns
+    -------
+    lb : float
+        Lower bound of the confidence interval covering (1 - alpha)%
+    stat : float
+        Correlation statistic, rho, of all pairwise distances between cytokines.
+    ub : float
+        Upper bound of the confidence interval covering (1 - alpha)%"""
+    
+    def corrComp(dmatA, dmatB, method):
+        n = dmatB.shape[0]
+        if method == 'pearson':
+            rho, p = stats.pearsonr(dmatA[np.triu_indices(n, k=1)], dmatB[np.triu_indices(n, k=1)])
+        elif method == 'spearman':
+            rho, p = stats.spearmanr(dmatA[np.triu_indices(n, k=1)], dmatB[np.triu_indices(n, k=1)])
+        else:
+            raise ValueError('Must specify method as "pearson" or "spearman"')
+        return rho
+
+    """if dmatFunc is None:
+        dmatFunc = partial(corrDmatFunc, metric=method)"""
+    
+    cyVars = [c for c in dfA.columns if c in dfB.columns.tolist()]
+    ncols = len(cyVars)
+
+    compFunc = partial(corrComp, method=method)
+
+    dA = dfA[cyVars]
+    dB = dfB[cyVars]
+    
+    strapped = np.zeros(nstraps)
+    for i in range(nstraps):
+        tmpA = dmatFunc(dA.sample(frac=1, replace=True, axis=0))
+        tmpB = dmatFunc(dB.sample(frac=1, replace=True, axis=0))
+        strapped[i] = compFunc(tmpA.values, tmpB.values)
+    
+    return tuple(np.percentile(strapped, [100*alpha/2,50,100*(1-alpha/2)]))
