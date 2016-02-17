@@ -255,3 +255,66 @@ def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps
         strapped[i] = compFunc(tmpA.values, tmpB.values)
     
     return tuple(np.percentile(strapped, [100*alpha/2,50,100*(1-alpha/2)]))
+
+def moduleCorrRatio(cyDf, labels, cyVars=None, alpha=0.05, nstraps=10000):
+    """Compute all pairwise intra- and inter-module cytokine correlations
+    with their IQRs. Additionally compute the intra : inter ratio with 95% CI
+
+    Uses a signed Pearson correlation coefficient since this is what is used
+    for clustering. The disadvantage is that it can't be described as fractional
+    variance, while the upside is that it captures the potential problem with
+    forming modules of anti-correlated cytokines.
+
+    Parameters
+    ----------
+    cyDf : pd.DataFrame [n_participants x n_cytokines]
+        Raw or normalized analyte log-concentrations.
+    labels : pd.Series
+        Module labels for each analyte
+
+    Returns
+    -------
+    out : dict
+        Keys for 'intra' and 'inter' with values containing a vector of [25%, 50%, 75%] quantiles of each.
+        Another key for 'ratio' containing a bootstrap 95% confidence interval."""
+    def ratioFunc(cyDf, intraMask, interMask):
+        smat = 1 - corrDmatFunc(cyDf, metric='pearson-signed').values
+        return (smat * intraMask).mean() / (smat * interMask).mean()
+
+    if cyVars is None:
+        cyVars = cyDf.columns.tolist()
+
+    """dmat is on the [0, 1] interval with 0 meaning perfect correlation and 1 meaning perfect anti-correlation"""
+    dmat = corrDmatFunc(cyDf, metric='pearson-signed')
+
+    intra = []
+    inter = []
+    intraMask = np.zeros(dmat.shape)
+    interMask = np.zeros(dmat.shape)
+    for a,b in itertools.combinations(cyVars, 2):
+        if not a == b:
+            """Use 1 - d such that high values represent better correlation
+            and higher IQR represents good clustering"""
+            s = 1 - dmat.loc[a,b]
+            i,j = cyVars.index(a), cyVars.index(b)
+            if labels[a] == labels[b]:
+                intra.append(s)
+                intraMask[i,j] = 1.
+            else:
+                inter.append(s)
+                interMask[i,j] = 1.
+
+    out = dict(intra=np.percentile(intra, q=[25,50,75]),
+               inter=np.percentile(inter, q=[25,50,75]))
+
+    ratio = ratioFunc(cyDf, intraMask, interMask)
+    rratios = np.zeros(nstraps)
+    for strapi in range(nstraps):
+        rratios[strapi] = ratioFunc(cyDf.sample(frac=1, replace=True, axis=0), intraMask, interMask)
+    out['ratio'] = np.percentile(rratios, [100*alpha/2, 50, 100*(1-alpha/2)])
+    return out
+
+
+
+
+
