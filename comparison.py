@@ -133,7 +133,7 @@ def pwdistCompXY(dmatA, dmatB):
 
     Returns
     -------
-    vecA, vecN : np.ndarray"""
+    vecA, vecN : pd.Series"""
 
     cyVars = [c for c in dmatA.columns if c in dmatB.columns.tolist()]
     n = len(cyVars)
@@ -141,7 +141,7 @@ def pwdistCompXY(dmatA, dmatB):
     vecB = dmatB[cyVars].loc[cyVars].values[np.triu_indices(n, k=1)]
     return vecA, vecB
 
-def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000):
+def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000, returnPermutations=False):
     """Compare two pairwise distance matrices
     using a permutation test. Test the null-hypothesis that
     the pairwise distance matrices are uncorrelated.
@@ -194,4 +194,8 @@ def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000):
         rindB = np.random.permutation(ncols)
         permstats[i] = compFunc(dA[rindA,:][:,rindA], dB[rindB,:][:,rindB])
     pvalue = ((np.abs(permstats) > np.abs(stat)).sum() + 1)/(nperms + 1)
-    return stat, pvalue, cyVars
+    out = (stat, pvalue, cyVars)
+    if returnPermutations:
+        return out + (permstats,)
+    else:
+        return out
