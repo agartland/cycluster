@@ -9,6 +9,8 @@ from corrplots import partialcorr
 from functools import partial
 from scipy import stats
 
+import cycluster as cy
+
 __all__ = ['compareClusters',
            'alignClusters',
            'crossCompartmentCorr',
@@ -257,10 +259,15 @@ def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps
     return tuple(np.percentile(strapped, [100*alpha/2,50,100*(1-alpha/2)]))
 
 def moduleCorrRatio(cyDf, labels, cyVars=None, alpha=0.05, nstraps=10000):
-    """Compute all pairwise intra- and inter-module cytokine correlations
-    with their IQRs. Additionally compute the intra : inter ratio with 95% CI
+    """Compute all pairwise intra- and inter-module cytokine correlation
+    coefficients with their IQRs.
 
-    Uses a signed Pearson correlation coefficient since this is what is used
+    Additionally compute the intra : inter ratio with 95% CI, where the
+    ratio is of signed-pearson correlation coefficients transformed to
+    the [0,1] interval with 0 meaning perfect anti-correlation
+    and 1 meaning perfect correlation
+    
+    For ratio, uses a signed Pearson correlation coefficient since this is what is used
     for clustering. The disadvantage is that it can't be described as fractional
     variance, while the upside is that it captures the potential problem with
     forming modules of anti-correlated cytokines.
@@ -274,28 +281,32 @@ def moduleCorrRatio(cyDf, labels, cyVars=None, alpha=0.05, nstraps=10000):
 
     Returns
     -------
-    out : dict
-        Keys for 'intra' and 'inter' with values containing a vector of [25%, 50%, 75%] quantiles of each.
-        Another key for 'ratio' containing a bootstrap 95% confidence interval."""
+    intra : np.ndarray shape (3,)
+        Vector containing 25th, 50th and 75th quantiles of all cytokine pairs within the same module.
+    inter : np.ndarray shape (3,)
+        Vector containing 25th, 50th and 75th quantiles of all cytokine pairs from different modules.
+    ratio : np.ndarray shape (3,)
+        Vector containing the intra : inter correlation ratio with bootstrap 95% CI or (1 - alpha)%
+        [LB, ratio, UB]"""
+
     def ratioFunc(cyDf, intraMask, interMask):
-        smat = 1 - corrDmatFunc(cyDf, metric='pearson-signed').values
-        return (smat * intraMask).mean() / (smat * interMask).mean()
+        """smat is on the [0, 1] interval with 0 meaning perfect anti-correlation and 1 meaning perfect correlation"""
+        smat = 1 - cy.corrDmatFunc(cyDf, metric='pearson-signed').values
+        return np.nanmean((smat * intraMask).ravel()) / np.nanmean((smat * interMask).ravel())
 
     if cyVars is None:
         cyVars = cyDf.columns.tolist()
 
-    """dmat is on the [0, 1] interval with 0 meaning perfect correlation and 1 meaning perfect anti-correlation"""
-    dmat = corrDmatFunc(cyDf, metric='pearson-signed')
+    """corrmat is on the [-1, 1] interval with 1 meaning perfect correlation and -1 meaning perfect anti-correlation"""
+    corrmat = cyDf[cyVars].corr()
 
     intra = []
     inter = []
-    intraMask = np.zeros(dmat.shape)
-    interMask = np.zeros(dmat.shape)
+    intraMask = np.nan * np.zeros(corrmat.shape)
+    interMask = np.nan * np.zeros(corrmat.shape)
     for a,b in itertools.combinations(cyVars, 2):
         if not a == b:
-            """Use 1 - d such that high values represent better correlation
-            and higher IQR represents good clustering"""
-            s = 1 - dmat.loc[a,b]
+            s = corrmat.loc[a,b]
             i,j = cyVars.index(a), cyVars.index(b)
             if labels[a] == labels[b]:
                 intra.append(s)
@@ -304,17 +315,16 @@ def moduleCorrRatio(cyDf, labels, cyVars=None, alpha=0.05, nstraps=10000):
                 inter.append(s)
                 interMask[i,j] = 1.
 
-    out = dict(intra=np.percentile(intra, q=[25,50,75]),
-               inter=np.percentile(inter, q=[25,50,75]))
+    intra = np.percentile(intra, q=[25,50,75])
+    inter = np.percentile(inter, q=[25,50,75])
 
-    ratio = ratioFunc(cyDf, intraMask, interMask)
-    rratios = np.zeros(nstraps)
-    for strapi in range(nstraps):
-        rratios[strapi] = ratioFunc(cyDf.sample(frac=1, replace=True, axis=0), intraMask, interMask)
-    out['ratio'] = np.percentile(rratios, [100*alpha/2, 50, 100*(1-alpha/2)])
-    return out
+    if nstraps is None or nstraps == 0:
+        return intra, inter
+    
+    else:
+        rratios = np.zeros(nstraps)
+        for strapi in range(nstraps):
+            rratios[strapi] = ratioFunc(cyDf[cyVars].sample(frac=1, replace=True, axis=0), intraMask, interMask)
+        ratio = np.percentile(rratios, [100*alpha/2, 50, 100*(1-alpha/2)])
 
-
-
-
-
+        return intra, inter, ratio
