@@ -16,7 +16,8 @@ __all__ = ['compareClusters',
            'crossCompartmentCorr',
            'pwdistComp',
            'pwdistCompXY',
-           'pwdistCompCI']
+           'pwdistCompCI',
+           'moduleCorrRatio']
 
 def compareClusters(labelsA, labelsB, method='ARI', alignFirst=True, useCommon=False):
     """Requre that labelsA and labelsB have the same index"""
