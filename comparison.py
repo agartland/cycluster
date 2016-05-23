@@ -205,7 +205,7 @@ def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000, returnPermutations
     else:
         return out
 
-def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps=10000):
+def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps=10000, returnBootstraps=False):
     """Compare two pairwise distance matrices
     and compute bootstrap confidence intervals.
 
@@ -240,9 +240,6 @@ def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps
             raise ValueError('Must specify method as "pearson" or "spearman"')
         return rho
 
-    """if dmatFunc is None:
-        dmatFunc = partial(corrDmatFunc, metric=method)"""
-    
     cyVars = [c for c in dfA.columns if c in dfB.columns.tolist()]
     ncols = len(cyVars)
 
@@ -253,11 +250,18 @@ def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps
     
     strapped = np.zeros(nstraps)
     for i in range(nstraps):
-        tmpA = dmatFunc(dA.sample(frac=1, replace=True, axis=0))
-        tmpB = dmatFunc(dB.sample(frac=1, replace=True, axis=0))
+        if dmatFunc is None:
+            tmpA = dA.sample(frac=1, replace=True, axis=0).corr()
+            tmpB = dB.sample(frac=1, replace=True, axis=0).corr()
+        else:
+            tmpA = dmatFunc(dA.sample(frac=1, replace=True, axis=0))
+            tmpB = dmatFunc(dB.sample(frac=1, replace=True, axis=0))
         strapped[i] = compFunc(tmpA.values, tmpB.values)
     
-    return tuple(np.percentile(strapped, [100*alpha/2,50,100*(1-alpha/2)]))
+    out = tuple(np.percentile(strapped, [100*alpha/2,50,100*(1-alpha/2)]))
+    if returnBootstraps:
+        out += (strapped,)
+    return out
 
 def moduleCorrRatio(cyDf, labels, cyVars=None, alpha=0.05, nstraps=10000):
     """Compute all pairwise intra- and inter-module cytokine correlation
