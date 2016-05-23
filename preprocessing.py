@@ -154,7 +154,7 @@ def convertLevel(mn, mx, val, mask = False, verbose = False):
             return 0.5
     return out
 
-def enforceSensitivity(cyDf, sensitivityS, truncateLevels = True, inplace = True):
+def enforceSensitivity(cyDf, sensitivityS, truncateLevels=True, inplace=True):
     """Perform truncation based on reported Sensitivity and ">XXXX" values?"""
     if not inplace:
         cyDf = cyDf.copy()
@@ -175,9 +175,9 @@ def enforceSensitivity(cyDf, sensitivityS, truncateLevels = True, inplace = True
             cyDf.loc[:,col] = cyDf[col].map(partial(convertLevel, mn, None))
     return cyDf, maskDf
 
-def tranformCytokines(cyDf, maskDf = None, performLog = True, halfLOD = True, discardCensored = False, inplace = True):
+def tranformCytokines(cyDf, maskDf=None, performLog=True, halfLOD=True, discardCensored=False, inplace=True):
     if maskDf is None:
-        maskDf = pd.DataFrame(np.zeros(cyDf.shape), index = cyDf.index, columns = cyDf.columns)
+        maskDf = pd.DataFrame(np.zeros(cyDf.shape), index=cyDf.index, columns=cyDf.columns)
 
     if not inplace:
         cyDf = cyDf.copy()
