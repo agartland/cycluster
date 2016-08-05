@@ -6,6 +6,7 @@ import pandas as pd
 from functools import partial
 from comparison import _alignClusterMats, alignClusters
 from preprocessing import partialCorrNormalize
+from copy import deepcopy
 
 from corrplots import partialcorr
 
@@ -199,7 +200,7 @@ class cyclusterClass(object):
             self.rModDf = self.modDf
 
     def clusterCytokines(self, K=6, alignLabels=None, labelMap=None):
-        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, partial(hierClusterFunc, K=6), threshold=0)
+        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, partial(hierClusterFunc, K=K), threshold=0)
         if not labelMap is None:
             self.labels = self.labels.map(labelMap)
         if not alignLabels is None:
@@ -250,6 +251,35 @@ class cyclusterClass(object):
             return _micd(self.pwrel, self.tmpLabels)
         else:
             raise IndexError('Value for dmat not understood (%s)' % dmat)
+
+    def pwrelStats(self):
+        """Return the mean and standard deviation of values from self.pwrel
+        for all non-identical cytokines. This is representative of
+        how reliable the clusters are overall. Returns mean of (1 - pwrel)"""
+        vec = 1 - self.pwrel.values[np.triu_indices_from(self.pwrel, k=1)].ravel()
+        return vec.mean(), vec.std()
+
+    def randCycluster(self):
+        """Return a copy of self with shuffled rows, destroying covariation
+        among cytokines. Requires that each column be shuffled, independently."""
+        out = deepcopy(self)
+        N = out.rCyDf.shape[0]
+        
+        for cy in out.cyVars:
+            vals = out.rCyDf[cy].values
+            nonnanInd = ~np.isnan(vals)
+            nonnan = vals[nonnanInd]
+            rind = np.random.permutation(nonnan.shape[0])
+            nonnan = nonnan[rind]
+            vals[nonnanInd] = nonnan
+            out.rCyDf.loc[:, cy] = vals
+
+            vals = out.nCyDf[cy].values
+            nonnan = vals[nonnanInd]
+            nonnan = nonnan[rind]
+            vals[nonnanInd] = nonnan
+            out.nCyDf.loc[:, cy] = vals
+        return out
 
     @property
     def name(self):

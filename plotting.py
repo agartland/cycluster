@@ -45,7 +45,7 @@ __all__ = ['plotModuleEmbedding',
            'plotCrossCompartmentBars',
            'plotHierClust']
 
-def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1], weights=None):
+def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=True, plotDims=[0,1], weights=None, txtSize='large'):
     """Embed cytokine correlation matrix to visualize cytokine clusters"""
     uLabels = np.unique(labels).tolist()
     n_components = max(plotDims) + 1
@@ -68,7 +68,7 @@ def plotModuleEmbedding(dmatDf, labels, dropped=None, method='kpca', plotLabels=
     axh = figh.add_axes([0.03,0.03,0.94,0.94])
     axh.axis('off')
     figh.set_facecolor('white')
-    annotationParams = dict(xytext=(0,5), textcoords='offset points', size='medium')
+    annotationParams = dict(xytext=(0,5), textcoords='offset points', size=txtSize)
     for cyi,cy in enumerate(dmatDf.columns):
         if not dropped is None and dropped[cy]:
             cyLab = '*' + cy
@@ -251,7 +251,7 @@ def plotMeanCorr(cyDf, meanVar, cyList=None, method='pearson'):
     plt.barh(np.arange(n)[sigInd], corrDf.rho.loc[sigInd], color='red', align='center')
     plt.yticks(range(n), corrDf.index)
     plt.grid(True, axis='x')
-    plt.xlabel('Correlation between\ncytokines and the "complete-common" mean ($\\rho$)')
+    plt.xlabel('Correlation between\neach cytokines and the mean ($\\rho$)')
     plt.plot([0,0],[-1,n],'k-',lw=1)
     plt.ylim((-1, n))
     plt.xlim((-1,1))

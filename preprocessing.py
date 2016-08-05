@@ -68,12 +68,23 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, ret
         to normalize additional timepoints."""
 
     def _meanCorrModel(colVec):
-        model = sm.GLM(endog=colVec, exog=sm.add_constant(muVec), missing='drop')
-        result = model.fit()
+        if colVec.isnull().all():
+            result = None
+        else:
+            model = sm.GLM(endog=colVec, exog=sm.add_constant(muVec), missing='drop')
+            try:
+                result = model.fit()
+            except sm.tools.sm_exceptions.PerfectSeparationError:
+                prnt = (colVec.name, colVec.isnull().sum(), colVec.shape[0])
+                print 'PerfectSeparationError with column "%s": %d of %d values are Nan' % prnt
+                result = None
         return result
     def _meanCorrResiduals(colVec):
         result = _meanCorrModel(colVec)
-        return colVec - result.predict(sm.add_constant(muVec))
+        if result is None:
+            return colVec
+        else:
+            return colVec - result.predict(sm.add_constant(muVec))
 
     if cyVars is None:
         cyVars = cyDf.columns
