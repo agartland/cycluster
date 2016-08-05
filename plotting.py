@@ -17,7 +17,7 @@ from matplotlib import cm
 import scipy.cluster.hierarchy as sch
 
 from corrplots import validPairwiseCounts, partialcorr, combocorrplot, crosscorr, heatmap
-from hclusterplot import plotBicluster
+from hclusterplot import plotBicluster, plotCorrHeatmap
 import statsmodels.api as sm
 from scipy import stats
 
@@ -301,12 +301,15 @@ def plotClusterOverlap(labelsA, labelsB, useCommon=False):
     plt.axis('off')
     plt.draw()
 
-def plotCrossCompartmentHeatmap(cyDfA, cyDfB, n_clusters=4):
+def plotCrossCompartmentHeatmap(cyDfA, cyDfB, bicluster=False, n_clusters=4):
     rho,pvalue,qvalue = crosscorr(cyDfA[sorted(cyDfA.columns)], cyDfB[sorted(cyDfB.columns)])
     if n_clusters is None:
         heatmap(rho, vmin=-1, vmax=1)   
     else:
-        rho_sorted = plotBicluster(rho, n_clusters=n_clusters)
+        if bicluster:
+            rho_sorted = plotBicluster(rho, n_clusters=n_clusters)
+        else:
+            plotCorrHeatmap(dmat=rho)
 
 def plotCrossCompartmentBoxplot(cyDfA, cyDfB):
     rho,pvalue,qvalue = crosscorr(cyDfA[sorted(cyDfA.columns)], cyDfB[sorted(cyDfB.columns)])
