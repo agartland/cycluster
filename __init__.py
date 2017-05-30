@@ -1,4 +1,4 @@
-from __future__ import division
+
 
 """Create modules of co-signaling cytokines for analysis of multiplexed cytokine data (e.g. Luminex)"""
 
@@ -16,12 +16,12 @@ from __future__ import division
    - compComm: list of complete-common cytokines for computing the mean for each sample
 """
 
-import preprocessing
-from clustering import *
+from . import preprocessing
+from .clustering import *
 from gapstat import computeGapStat
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
-import plotting
-import comparison
+from . import plotting
+from . import comparison
 
 __all__ = ['preprocessing',
            'computeGapStat',
