@@ -1,4 +1,4 @@
-from __future__ import division
+
 import numpy as np
 import matplotlib.pyplot as plt
 import itertools
@@ -58,33 +58,33 @@ def _alignClusterMats(matA, matB):
     
     swaps = {}
     for colA in range(nCols):
-        match = np.argmax([(matA[:,colA] * matB[:,colB]).sum() for colB in range(nCols)])
+        match = np.argmax([(matA[:, colA] * matB[:, colB]).sum() for colB in range(nCols)])
         swaps.update({match:colA})
     if len(swaps) == nCols:
         """Easy 1:1 matching"""
-        for colB,colA in swaps.items():
-            out[:,colA] = matB[:,colB]
+        for colB, colA in list(swaps.items()):
+            out[:, colA] = matB[:, colB]
 
     """In case the clusters aren't clearly 1:1 then try extra swaps until the optimum is found"""
     niters = 0
     while True:
         swaps = []
         curProd = (matA * out).sum()
-        for ai,bi in itertools.product(range(nCols),range(nCols)):
+        for ai, bi in itertools.product(list(range(nCols)), list(range(nCols))):
             ind = np.arange(nCols)
             ind[ai] = bi
             ind[bi] = ai
-            newProd = (matA * out[:,ind]).sum()
+            newProd = (matA * out[:, ind]).sum()
             if curProd < newProd:
-                swaps.append((ai,bi,newProd))
+                swaps.append((ai, bi, newProd))
         if len(swaps) == 0:
             break
         else:
-            ai,bi,newProd = swaps[np.argmax([x[2] for x in swaps])]
+            ai, bi, newProd = swaps[np.argmax([x[2] for x in swaps])]
             ind = np.arange(nCols)
             ind[ai] = bi
             ind[bi] = ai
-            out = out[:,ind]
+            out = out[:, ind]
     return out
 
 def _alignSparseDf(dfA, dfB):
@@ -94,9 +94,9 @@ def _alignSparseDf(dfA, dfB):
 def _labels2sparseDf(labels):
     labelCols = np.unique(labels)
     clusterMat = np.zeros((labels.shape[0], labelCols.shape[0]), dtype = np.int32)
-    for labi,lab in enumerate(labelCols):
+    for labi, lab in enumerate(labelCols):
         ind = (labels==lab).values
-        clusterMat[ind,labi] = 1
+        clusterMat[ind, labi] = 1
     return pd.DataFrame(clusterMat, index = labels.index, columns = labelCols)
 
 def _sparseDf2labels(sparseDf):
@@ -115,15 +115,15 @@ def alignClusters(labelsA, labelsB):
 def crossCompartmentCorr(dfA, dfB, method='pearson'):
     """Cytokine correlation for those that are common to both A and B"""
     cyList = np.array([cy for cy in dfA.columns if cy in dfB.columns])
-    joinedDf = pd.merge(dfA[cyList], dfB[cyList], suffixes=('_A','_B'), left_index=True, right_index=True)
-    tmpCorr = np.zeros((len(cyList),3))
-    for i,cy in enumerate(cyList):
-        tmp = joinedDf[[cy + '_A',cy + '_B']].dropna()
-        tmpCorr[i,:2] = partialcorr(tmp[cy + '_A'], tmp[cy + '_B'], method=method)
-    sorti = np.argsort(tmpCorr[:,0])
+    joinedDf = pd.merge(dfA[cyList], dfB[cyList], suffixes=('_A', '_B'), left_index=True, right_index=True)
+    tmpCorr = np.zeros((len(cyList), 3))
+    for i, cy in enumerate(cyList):
+        tmp = joinedDf[[cy + '_A', cy + '_B']].dropna()
+        tmpCorr[i, :2] = partialcorr(tmp[cy + '_A'], tmp[cy + '_B'], method=method)
+    sorti = np.argsort(tmpCorr[:, 0])
     tmpCorr = tmpCorr[sorti,:]
-    _, tmpCorr[:,2], _, _ = sm.stats.multipletests(tmpCorr[:,1], method='fdr_bh')
-    return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho','pvalue','qvalue'])
+    _, tmpCorr[:, 2], _, _ = sm.stats.multipletests(tmpCorr[:, 1], method='fdr_bh')
+    return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho', 'pvalue', 'qvalue'])
 
 def pwdistCompXY(dmatA, dmatB):
     """Return unraveled upper triangles of the two distance matrices
@@ -196,7 +196,7 @@ def pwdistComp(dmatA, dmatB, method='spearman', nperms=10000, returnPermutations
         """Permutation of common columns"""
         rindA = np.random.permutation(ncols)
         rindB = np.random.permutation(ncols)
-        permstats[i] = compFunc(dA[rindA,:][:,rindA], dB[rindB,:][:,rindB])
+        permstats[i] = compFunc(dA[rindA,:][:, rindA], dB[rindB,:][:, rindB])
     pvalue = ((np.abs(permstats) > np.abs(stat)).sum() + 1)/(nperms + 1)
 
     out = (stat, pvalue, cyVars)
@@ -258,7 +258,7 @@ def pwdistCompCI(dfA, dfB, dmatFunc=None, alpha=0.05, method='spearman', nstraps
             tmpB = dmatFunc(dB.sample(frac=1, replace=True, axis=0))
         strapped[i] = compFunc(tmpA.values, tmpB.values)
     
-    out = tuple(np.percentile(strapped, [100*alpha/2,50,100*(1-alpha/2)]))
+    out = tuple(np.percentile(strapped, [100*alpha/2, 50, 100*(1-alpha/2)]))
     if returnBootstraps:
         out += (strapped,)
     return out
@@ -309,19 +309,19 @@ def moduleCorrRatio(cyDf, labels, cyVars=None, alpha=0.05, nstraps=10000):
     inter = []
     intraMask = np.nan * np.zeros(corrmat.shape)
     interMask = np.nan * np.zeros(corrmat.shape)
-    for a,b in itertools.combinations(cyVars, 2):
+    for a, b in itertools.combinations(cyVars, 2):
         if not a == b:
-            s = corrmat.loc[a,b]
-            i,j = cyVars.index(a), cyVars.index(b)
+            s = corrmat.loc[a, b]
+            i, j = cyVars.index(a), cyVars.index(b)
             if labels[a] == labels[b]:
                 intra.append(s)
-                intraMask[i,j] = 1.
+                intraMask[i, j] = 1.
             else:
                 inter.append(s)
-                interMask[i,j] = 1.
+                interMask[i, j] = 1.
 
-    intra = np.percentile(intra, q=[25,50,75])
-    inter = np.percentile(inter, q=[25,50,75])
+    intra = np.percentile(intra, q=[25, 50, 75])
+    inter = np.percentile(inter, q=[25, 50, 75])
 
     if nstraps is None or nstraps == 0:
         return intra, inter

@@ -76,7 +76,7 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, ret
                 result = model.fit()
             except sm.tools.sm_exceptions.PerfectSeparationError:
                 prnt = (colVec.name, colVec.isnull().sum(), colVec.shape[0])
-                print 'PerfectSeparationError with column "%s": %d of %d values are Nan' % prnt
+                print('PerfectSeparationError with column "%s": %d of %d values are Nan' % prnt)
                 result = None
         return result
     def _meanCorrResiduals(colVec):
@@ -97,10 +97,10 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, ret
     Ensures equal "weighting" between cytokines when computing the mean level."""
     muVec = cyDf[compCommVars].apply(lambda cy: (cy - cy.mean()) / cy.std(), axis=0).mean(axis=1)
     
-    models = cyDf.loc[:,cyVars].apply(_meanCorrModel, axis=0)
+    models = cyDf.loc[:, cyVars].apply(_meanCorrModel, axis=0)
 
     ndf = cyDf.copy()
-    ndf.loc[:,cyVars] = ndf.loc[:,cyVars].apply(_meanCorrResiduals, axis=0)
+    ndf.loc[:, cyVars] = ndf.loc[:, cyVars].apply(_meanCorrResiduals, axis=0)
     ndf.loc[:, meanVar] = muVec
 
     if returnModels:
@@ -129,8 +129,8 @@ def convertLevel(mn, mx, val, mask = False, verbose = False):
     1 : maximum/saturated
     -1 : NA/ND (not done)"""
     
-    if isinstance(val, basestring):
-        val = val.replace(',','').replace('>','')
+    if isinstance(val, str):
+        val = val.replace(',', '').replace('>', '')
     
     try:
         out = float(val)
@@ -142,20 +142,20 @@ def convertLevel(mn, mx, val, mask = False, verbose = False):
         elif val.find('N/A') >= 0:
             out = np.nan
         else:
-            raise BaseException, "Unexpected value: %s" % val
+            raise BaseException("Unexpected value: %s" % val)
 
     if not mx is None:
         if out >= mx:
             if verbose:
-                print 'Max truncation: %1.2f to %1.2f' % (out,mx)
-            out = min(out,mx)
+                print('Max truncation: %1.2f to %1.2f' % (out, mx))
+            out = min(out, mx)
             if mask:
                 return 1
     if not mn is None:
         if out <= mn:
             if verbose:
-                print 'Min truncation %1.2f to %1.2f' % (out,mn)
-            out = max(out,mn)
+                print('Min truncation %1.2f to %1.2f' % (out, mn))
+            out = max(out, mn)
             if mask:
                 return 0
     if mask:
@@ -176,14 +176,14 @@ def enforceSensitivity(cyDf, sensitivityS, truncateLevels=True, inplace=True):
         if not cyDf[col].dtype == dtype('float64'):
             gtPresent = (cyDf[col].str.contains('>') == True)
         if any(gtPresent):
-            mx = cyDf.loc[gtPresent,col].map(partial(_convertLevel,0,None)).max()
+            mx = cyDf.loc[gtPresent, col].map(partial(_convertLevel, 0, None)).max()
         else:
             mx = None
-        maskDf.loc[:,col] = maskDf[col].map(partial(convertLevel, mn, mx, mask = True))
+        maskDf.loc[:, col] = maskDf[col].map(partial(convertLevel, mn, mx, mask = True))
         if truncateLevels:
-            cyDf.loc[:,col] = cyDf[col].map(partial(convertLevel, mn, mx))
+            cyDf.loc[:, col] = cyDf[col].map(partial(convertLevel, mn, mx))
         else:
-            cyDf.loc[:,col] = cyDf[col].map(partial(convertLevel, mn, None))
+            cyDf.loc[:, col] = cyDf[col].map(partial(convertLevel, mn, None))
     return cyDf, maskDf
 
 def tranformCytokines(cyDf, maskDf=None, performLog=True, halfLOD=True, discardCensored=False, inplace=True):

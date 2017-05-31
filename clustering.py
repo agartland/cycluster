@@ -1,11 +1,11 @@
-from __future__ import division
+
 import scipy.cluster.hierarchy as sch
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 import numpy as np
 import pandas as pd
 from functools import partial
-from comparison import _alignClusterMats, alignClusters
-from preprocessing import partialCorrNormalize
+from .comparison import _alignClusterMats, alignClusters
+from .preprocessing import partialCorrNormalize
 from copy import deepcopy
 
 from corrplots import partialcorr
@@ -29,7 +29,7 @@ def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
             dmat[np.isnan(dmat)] = 1
         elif metric in ['spearman-signed', 'pearson-signed']:
             """Anti-correlations are considered as dissimilar and will NOT cluster together"""
-            dmat = ((1 - cyDf.corr(method = metric.replace('-signed',''), min_periods = minN).values) / 2)
+            dmat = ((1 - cyDf.corr(method = metric.replace('-signed', ''), min_periods = minN).values) / 2)
             dmat[np.isnan(dmat)] = 1
         else:
             raise NameError('metric name not recognized')
@@ -40,14 +40,14 @@ def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
             for j in range(ncols):
                 """Assume distance is symetric"""
                 if i <= j:
-                    tmpdf = cyDf.iloc[:,[i,j]]
+                    tmpdf = cyDf.iloc[:, [i, j]]
                     tmpdf = tmpdf.dropna()
                     if tmpdf.shape[0] >= minN:
-                        d = dfunc(cyDf.iloc[:,i],cyDf.iloc[:,j])
+                        d = dfunc(cyDf.iloc[:, i], cyDf.iloc[:, j])
                     else:
                         d = np.nan
-                    dmat[i,j] = d
-                    dmat[j,i] = d
+                    dmat[i, j] = d
+                    dmat[j, i] = d
     return pd.DataFrame(dmat, columns = cyDf.columns, index = cyDf.columns)
 
 def hierClusterFunc(dmatDf, K=6, method='complete', returnLinkageMat=False):
@@ -75,7 +75,7 @@ def formReliableClusters(cyDf, dmatFunc, clusterFunc, bootstraps=500, threshold=
             if  meanReliability < threshold:
                 dropped[cy] = True
                 strTuple = (cy, cyDf.sampleStr, 'N' if cyDf.normed else '', currLab, 100 * meanReliability)
-                print 'Excluded %s from cluster %s %sM%s: mean reliability was %1.1f%%' % strTuple
+                print('Excluded %s from cluster %s %sM%s: mean reliability was %1.1f%%' % strTuple)
         
         """Consider step-up strategy: start with best and add those that fit"""
     return pwrelDf, labels, dropped
@@ -85,7 +85,7 @@ def labels2modules(labels, dropped = None):
     out = {lab:labels.index[labels == lab].tolist() for lab in uLabels}
     if not dropped is None:
         todrop = dropped.index[dropped].tolist()
-        for lab in out.keys():
+        for lab in list(out.keys()):
             out[lab] = [cy for cy in out[lab] if not cy in todrop]
             if len(out[lab]) == 0:
                 _ = out.pop(lab)
@@ -120,8 +120,8 @@ def makeModuleVariables(cyDf, labels, sampleStr='M', dropped=None):
     uLabels = np.unique(labels)
     for lab in uLabels:
         members = labels.index[(labels == lab) & (~dropped)]
-        tmpS = cyDf.loc[:,members].apply(standardizeFunc, raw = True).mean(axis = 1, skipna=True)
-        tmpS.name = '%s%s' % (sampleStr,lab)
+        tmpS = cyDf.loc[:, members].apply(standardizeFunc, raw = True).mean(axis = 1, skipna=True)
+        tmpS.name = '%s%s' % (sampleStr, lab)
         if out is None:
             out = pd.DataFrame(tmpS)
         else:
@@ -135,13 +135,13 @@ def meanCorr(cyDf, meanVar, cyList=None, method='pearson'):
         cyList = np.array([c for c in cyDf.columns if not c == meanVar])
     cyList = np.asarray(cyList)
 
-    tmpCorr = np.zeros((len(cyList),3))
-    for i,s in enumerate(cyList):
-        tmpCorr[i,:2] = partialcorr(cyDf[s], cyDf[meanVar], method=method)
-    sorti = np.argsort(tmpCorr[:,0])
+    tmpCorr = np.zeros((len(cyList), 3))
+    for i, s in enumerate(cyList):
+        tmpCorr[i, :2] = partialcorr(cyDf[s], cyDf[meanVar], method=method)
+    sorti = np.argsort(tmpCorr[:, 0])
     tmpCorr = tmpCorr[sorti,:]
-    _, tmpCorr[:,2], _, _ = sm.stats.multipletests(tmpCorr[:,1], alpha=0.2, method='fdr_bh')
-    return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho','pvalue','qvalue'])
+    _, tmpCorr[:, 2], _, _ = sm.stats.multipletests(tmpCorr[:, 1], alpha=0.2, method='fdr_bh')
+    return pd.DataFrame(tmpCorr, index=cyList[sorti], columns=['rho', 'pvalue', 'qvalue'])
 
 def silhouette(dmatDf, labels):
     """Compute the silhouette of every analyte."""
@@ -155,7 +155,7 @@ def silhouette(dmatDf, labels):
                 tmp = dmatDf.loc[cy, labels==lab].sum()
                 if b is None or tmp < b:
                     b = tmp
-        s = (b - a)/max(b,a)
+        s = (b - a)/max(b, a)
         return s
     return labels.index.map(oneSilhouette)
 
@@ -211,21 +211,21 @@ class cyclusterClass(object):
             self.rModDf = makeModuleVariables(self.rCyDf, self.labels, sampleStr=self.sampleStr, dropped=self.dropped)
         else:
             self.rModDf = self.modDf
-        _,self.Z = hierClusterFunc(self.pwrel, returnLinkageMat=True)
+        _, self.Z = hierClusterFunc(self.pwrel, returnLinkageMat=True)
         self.dmatDf = corrDmatFunc(self.cyDf)
 
     def printModules(self, modules=None):
         tmp = labels2modules(self.labels, dropped=None)
-        for m in tmp.keys():
-            mStr = '%s%d' % (self.sampleStr,m)
+        for m in list(tmp.keys()):
+            mStr = '%s%d' % (self.sampleStr, m)
             if modules is None or mStr == modules or mStr in modules:
-                print mStr
+                print(mStr)
                 for c in sorted(tmp[m]):
                     if self.dropped[c]:
-                        print '*',
-                    print c
-                print
-    def modMembers(self,modStr):
+                        print('*', end=' ')
+                    print(c)
+                print()
+    def modMembers(self, modStr):
         return self.modS[int(modStr[-1])]
     def meanICD(self, dmat='dmat', dropped=None):
         """Compute mean intra-cluster distance using either dmatDf or pwrel"""
