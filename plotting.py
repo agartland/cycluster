@@ -118,7 +118,7 @@ def plotInterModuleCorr(cyDf, labels, dropped = None, compCommVar = None):
     figh.clf()
     combocorrplot(modDf[modVars], method = 'pearson')
 
-def cyBoxPlots(cyDf, ptidDf=None, hue=None, unLog=True):
+def cyBoxPlots(cyDf, ptidDf=None, hue=None, unLog=True, order=None):
     """Boxplots of cytokines sorted by median"""
     def sortFunc(cyDf, c):
         tmp = cyDf[c].dropna()
@@ -126,7 +126,10 @@ def cyBoxPlots(cyDf, ptidDf=None, hue=None, unLog=True):
             return 0
         else:
             return np.median(tmp)
-    sortedCy = sorted(cyDf.columns, key=partial(sortFunc,cyDf), reverse=True)
+    if order is None:
+        sortedCy = sorted(cyDf.columns, key=partial(sortFunc,cyDf), reverse=True)
+    else:
+        sortedCy = order
     plt.clf()
     if ptidDf is None or hue is None:
         sns.boxplot(cyDf, order=sortedCy)
