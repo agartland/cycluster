@@ -5,11 +5,12 @@ from functools import partial
 
 __all__ = ['transformCytokines',
            'enforceSensitivity',
-           'fillMissing',
            'normalizeLevels',
            'meanSubNormalize',
            'partialCorrNormalize',
-           'convertLevel']
+           'convertLevel',
+           'standardizedMean',
+           'imputeNA']
 
 def meanSubNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None):
     """Normalize cytokine columns by the log-mean for each patient, within each compartment.
@@ -95,7 +96,7 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, ret
 
     """Standardize each cytokine before taking the mean.
     Ensures equal "weighting" between cytokines when computing the mean level."""
-    muVec = cyDf[compCommVars].apply(lambda cy: (cy - cy.mean()) / cy.std(), axis=0).mean(axis=1)
+    muVec = standardizedMean(cyDf, vars=compCommvars)
     
     models = cyDf.loc[:, cyVars].apply(_meanCorrModel, axis=0)
 
@@ -108,14 +109,36 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, ret
     else:
         return ndf
 
-def fillMissing(df):
+def standardizedMean(df, vars=None):
+    if vars is None:
+        vars = df.columns
+    muS = df[vars].apply(lambda cy: (cy - cy.mean()) / cy.std(), axis=0).mean(axis=1)
+    muS.name = 'Mean'
+    return muS
+
+def imputeNA(df, method='mean', dropThresh=0.75):
     """Drop rows (PTIDs) that have fewer than 90% of their cytokines"""
-    out = df.dropna(axis=0, thresh=round(df.shape[1] * 0.9)).copy()
-    for c in df.columns:
-        naind = out[c].isnull()
-        plugs = np.random.permutation(out[c].loc[~naind].values)[:naind.sum()]
-        out.loc[naind, c] = plugs
-    return out
+    outDf = df.dropna(axis=0, thresh=np.round(df.shape[1] * dropThresh)).copy()
+    if method == 'resample':
+        for col in outDf.columns:
+            naInd = outDf[col].isnull()
+            outDf.loc[naInd, col] = outDf.loc[~naInd, col].sample(naInd.sum(), replace=True).values
+    elif method == 'mean':
+        for col in outDf.columns:
+            naInd = outDf[col].isnull()
+            outDf.loc[naInd, col] = outDf.loc[~naInd, col].mean()
+    elif method == 'predict':
+        naInds = []
+        for col in outDf.columns:
+            naInd = outDf[col].isnull()
+            outDf.loc[naInd, col] = outDf.loc[~naInd, col].mean()
+            naInds.append(naInd)
+        for naInd,col in zip(naInds, outDf.columns):
+            if naInd.sum() > 0:
+                otherCols = [c for c in outDf.columns if not c == col]
+                mod = sklearn.linear_model.LinearRegression().fit(outDf[otherCols], outDf[col])
+                outDf.loc[naInd, col] = mod.predict(outDf.loc[naInd, otherCols])
+    return outDf
 
 def convertLevel(mn, mx, val, mask = False, verbose = False):
     """Map function for cleaning and censoring cytokine values
