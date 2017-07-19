@@ -442,7 +442,7 @@ def plotHierClust(dmatDf, Z, labels=None, titleStr=None, vRange=None, tickSz='sm
 
     """Dendrogaram along the rows"""
     plt.sca(denAX)
-    denD = sch.dendrogram(Z, color_threshold=np.inf, orientation='right')
+    denD = sch.dendrogram(Z, color_threshold=np.inf, orientation='left')
     colInd = denD['leaves']
     _clean_axis(denAX)
 

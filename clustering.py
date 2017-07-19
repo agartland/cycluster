@@ -21,7 +21,7 @@ __all__ = ['hierClusterFunc',
            'meanCorr',
            'silhouette']
 
-def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=30):
+def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=None):
     if dfunc is None:
         if metric in ['spearman', 'pearson']:
             """Anti-correlations are also considered as high similarity and will cluster together"""
@@ -199,8 +199,9 @@ class cyclusterClass(object):
         else:
             self.rModDf = self.modDf
 
-    def clusterCytokines(self, K=6, alignLabels=None, labelMap=None):
-        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrDmatFunc, partial(hierClusterFunc, K=K), threshold=0)
+    def clusterCytokines(self, K=6, alignLabels=None, labelMap=None, metric=None, minN=None):
+        corrFunc = partial(corrDmatFunc, metric=metric, minN=minN)
+        self.pwrel, self.labels, self.dropped = formReliableClusters(self.cyDf, corrFunc, partial(hierClusterFunc, K=K), threshold=0)
         if not labelMap is None:
             self.labels = self.labels.map(labelMap)
         if not alignLabels is None:

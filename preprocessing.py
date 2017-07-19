@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import statsmodels.api as sm
 from functools import partial
+import sklearn
 
 __all__ = ['transformCytokines',
            'enforceSensitivity',
@@ -96,7 +97,7 @@ def partialCorrNormalize(cyDf, cyVars=None, compCommVars=None, meanVar=None, ret
 
     """Standardize each cytokine before taking the mean.
     Ensures equal "weighting" between cytokines when computing the mean level."""
-    muVec = standardizedMean(cyDf, vars=compCommvars)
+    muVec = standardizedMean(cyDf, vars=compCommVars)
     
     models = cyDf.loc[:, cyVars].apply(_meanCorrModel, axis=0)
 
