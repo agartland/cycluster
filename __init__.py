@@ -20,8 +20,10 @@ from gapstat import computeGapStat
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 from . import plotting
 from . import comparison
+from . import io
 
 __all__ = ['preprocessing',
            'computeGapStat',
            'plotting',
-           'comparison']
+           'comparison',
+           'io']

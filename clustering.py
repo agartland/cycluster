@@ -1,5 +1,6 @@
 
 import scipy.cluster.hierarchy as sch
+from scipy.spatial import distance
 from bootstrap_cluster import bootstrapFeatures, bootstrapObservations
 import numpy as np
 import pandas as pd
@@ -22,6 +23,8 @@ __all__ = ['hierClusterFunc',
            'silhouette']
 
 def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=None):
+    if metric is None:
+        metric = 'pearson-signed'
     if dfunc is None:
         if metric in ['spearman', 'pearson']:
             """Anti-correlations are also considered as high similarity and will cluster together"""
@@ -50,10 +53,18 @@ def corrDmatFunc(cyDf, metric='pearson-signed', dfunc=None, minN=None):
                     dmat[j, i] = d
     return pd.DataFrame(dmat, columns = cyDf.columns, index = cyDf.columns)
 
-def hierClusterFunc(dmatDf, K=6, method='complete', returnLinkageMat=False):
-    hclusters = sch.linkage(dmatDf.values, method = method)
-    labelsVec = sch.fcluster(hclusters, K, criterion = 'maxclust')
-    labels = pd.Series(labelsVec, index = dmatDf.columns)
+def hierClusterFunc(dmatDf, K=6, method='complete', returnLinkageMat=False, old=False):
+    if not old:
+        if dmatDf.shape[0] == dmatDf.shape[1]:
+            #compressedDmat = dmat.values[np.triu_indices_from(dmat.values)].ravel()
+            compressedDmat = distance.squareform(dmatDf.values)
+        else:
+            raise
+    else:
+        compressedDmat = dmatDf.values
+    hclusters = sch.linkage(compressedDmat, method=method)
+    labelsVec = sch.fcluster(hclusters, K, criterion='maxclust')
+    labels = pd.Series(labelsVec, index=dmatDf.columns)
     if not returnLinkageMat:
         return labels
     else:
